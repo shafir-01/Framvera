@@ -1,5 +1,5 @@
 import type { Allocation, Intent, Plan, Verification, World } from '@framvera/contracts';
-import { effectiveCapacity, jointMembers, offerCost } from '@framvera/contracts';
+import { effectiveCapacity, isIso, jointMembers, offerCost } from '@framvera/contracts';
 import { fmtMoney } from './text.ts';
 
 /** Rounding allowance for times, in milliseconds. */
@@ -13,7 +13,8 @@ export interface VerifyOptions {
   capacity?: 'effective' | 'claimed';
 }
 
-const t = (s: string) => Date.parse(s);
+/** Only UTC ISO timestamps are read; anything else is unreadable and fails the plan rather than passing silently. */
+const t = (s: string) => (isIso(s) ? Date.parse(s) : NaN);
 
 /** Independent re-check of a plan using plain arithmetic over the world's published terms. */
 export function verifyPlan(plan: Plan, world: World, intent: Intent, opts: VerifyOptions = {}): Verification {
@@ -59,6 +60,22 @@ export function verifyPlan(plan: Plan, world: World, intent: Intent, opts: Verif
   }
   add('offers', refProblems, 'Every allocation uses an existing, active offer.');
   if (refProblems.length) return { ok: false, checks };
+
+  const unreadable: string[] = [];
+  const readable = (value: string, what: string) => {
+    if (Number.isNaN(t(value))) unreadable.push(`${what} has an unreadable time: ${JSON.stringify(value)}.`);
+  };
+  readable(intent.deadline, 'The deadline');
+  readable(world.createdAt, 'The market clock');
+  readable(plan.readyAt, 'The plan');
+  for (const a of allocs) {
+    const o = offers.get(a.offer)!;
+    readable(o.validUntil, `The offer ${o.id} expiry`);
+    readable(o.window.start, `The offer ${o.id} window`);
+    readable(o.window.end, `The offer ${o.id} window`);
+  }
+  add('times', [...new Set(unreadable)], 'Every time is a readable UTC timestamp.');
+  if (unreadable.length) return { ok: false, checks };
 
   const seen = new Map<string, number>();
   for (const a of allocs) seen.set(a.offer, (seen.get(a.offer) ?? 0) + 1);
@@ -149,6 +166,9 @@ export function verifyPlan(plan: Plan, world: World, intent: Intent, opts: Verif
   for (const a of allocs) {
     const o = offers.get(a.offer)!;
     if (a.cost.currency !== currency) moneyProblems.push(`Allocation on ${a.offer} is priced in ${a.cost.currency}.`);
+    if (o.setupFee.currency !== currency || o.tiers.some((x) => x.unit.currency !== currency)) {
+      moneyProblems.push(`The offer from ${nameOf(o.actor)} is priced in another currency than ${currency}.`);
+    }
     if (!Number.isSafeInteger(a.cost.minor)) moneyProblems.push(`Allocation on ${a.offer} has a non-integer amount.`);
     if (!isFixed(a)) {
       const expected = offerCost(o, a.qty).minor;
@@ -163,7 +183,8 @@ export function verifyPlan(plan: Plan, world: World, intent: Intent, opts: Verif
   const budgetProblems: string[] = [];
   if (sum > intent.budget.minor) budgetProblems.push(`Total ${fmtMoney({ currency, minor: sum })} exceeds the budget of ${fmtMoney(intent.budget)}.`);
   const auth = intent.authority.maxSpend;
-  if (auth.currency === currency && sum > auth.minor) budgetProblems.push(`Total ${fmtMoney({ currency, minor: sum })} exceeds the spending authority of ${fmtMoney(auth)}.`);
+  if (auth.currency !== currency) budgetProblems.push(`The spending authority is set in ${auth.currency}, so it cannot be checked against a ${currency} plan.`);
+  else if (sum > auth.minor) budgetProblems.push(`Total ${fmtMoney({ currency, minor: sum })} exceeds the spending authority of ${fmtMoney(auth)}.`);
   add('budget', budgetProblems, 'Total spend is within budget and spending authority.');
 
   return { ok: checks.every((c) => c.ok), checks };

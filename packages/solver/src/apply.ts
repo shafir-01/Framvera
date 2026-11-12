@@ -24,8 +24,16 @@ export function applyConcessions(world: World, intent: Intent, concessions: Conc
   const touched = new Map<string, { offer: Offer; ids: string[]; coalition?: string }>();
   for (const c of concessions) {
     if (c.target.kind === 'intent') {
-      if (c.target.field === 'deadline') nextIntent.deadline = asIso(c.to, 'deadline');
-      else nextIntent.budget = { ...nextIntent.budget, minor: Math.round(asNumber(c.to, 'budget')) };
+      if (c.target.field === 'deadline') {
+        const to = asIso(c.to, 'deadline');
+        const extra = (Date.parse(to) - Date.parse(intent.deadline)) / 3_600_000;
+        if (extra > (intent.negotiable.deadlineHours ?? 0) + 1e-9) throw new Error(`concession ${c.id} moves the deadline ${extra} hours, beyond what the buyer allowed`);
+        nextIntent.deadline = to;
+      } else {
+        const to = Math.round(asNumber(c.to, 'budget'));
+        if (to - intent.budget.minor > (intent.negotiable.budgetMinor ?? 0)) throw new Error(`concession ${c.id} raises the budget beyond what the buyer allowed`);
+        nextIntent.budget = { ...nextIntent.budget, minor: to };
+      }
       continue;
     }
     const target = c.target;

@@ -12,7 +12,7 @@ import type {
 } from '@framvera/contracts';
 import { Model, type Term } from './lp.ts';
 import { HOUR_MS, fmtMoney, fmtTime } from './text.ts';
-import { effectiveCapacity, offerCost } from '@framvera/contracts';
+import { effectiveCapacity, isIso, offerCost } from '@framvera/contracts';
 import { deriveOffer, parseCoalition } from './joint.ts';
 
 /** Largest time shift the planner will ever propose for a window, in hours. */
@@ -112,9 +112,8 @@ export interface Compiled {
 }
 
 const ms = (t: string): number => {
-  const v = Date.parse(t);
-  if (Number.isNaN(v)) throw new Error(`invalid timestamp ${t}`);
-  return v;
+  if (!isIso(t)) throw new Error(`invalid timestamp ${t}`);
+  return Date.parse(t);
 };
 
 /** Units an offer can be allocated: shared contracts semantics unless claims are taken at face value. */
@@ -125,7 +124,8 @@ export function capacityOf(world: World, offer: Offer, mode: CompileOptions['cap
 /** The binding spend limit: the budget, or the spending authority when it is lower. */
 export function spendCap(intent: Intent): number {
   const auth = intent.authority.maxSpend;
-  return auth.currency === intent.budget.currency ? Math.min(intent.budget.minor, auth.minor) : intent.budget.minor;
+  if (auth.currency !== intent.budget.currency) throw new Error(`spending authority in ${auth.currency} cannot cap a ${intent.budget.currency} budget`);
+  return Math.min(intent.budget.minor, auth.minor);
 }
 
 export function stageDemand(stage: Stage, intent: Intent): number {

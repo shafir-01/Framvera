@@ -160,6 +160,16 @@ describe('applyConcessions', () => {
     expect(row.rhs).toBe(1);
   });
 
+  it('refuses deadline or budget changes beyond what the buyer allowed', () => {
+    const i = kitsIntent({ negotiable: { deadlineHours: 12, budgetMinor: 100000 } });
+    const late = { id: 'd', target: { kind: 'intent' as const, field: 'deadline' as const }, from: i.deadline, to: at(6, 12), estimate: sek(0), rationale: '' };
+    const rich = { id: 'b', target: { kind: 'intent' as const, field: 'budget' as const }, from: i.budget.minor, to: i.budget.minor + 100001, estimate: sek(0), rationale: '' };
+    expect(() => applyConcessions(kitsWorld(), i, [late])).toThrow(/beyond what the buyer allowed/);
+    expect(() => applyConcessions(kitsWorld(), i, [rich])).toThrow(/beyond what the buyer allowed/);
+    const ok = { ...rich, to: i.budget.minor + 100000 };
+    expect(applyConcessions(kitsWorld(), i, [ok]).intent.budget.minor).toBe(i.budget.minor + 100000);
+  });
+
   it('sells every quantity at exactly the agreed unit price', () => {
     const w = kitsWorld();
     const next = applyConcessions(w, kitsIntent(), [

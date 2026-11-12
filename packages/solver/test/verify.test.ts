@@ -62,6 +62,16 @@ describe('verifyPlan', async () => {
     expect(v.checks.find((c) => c.id === 'budget')!.ok).toBe(false);
   });
 
+  it('fails a spending authority set in another currency instead of skipping it', () => {
+    const v = verifyPlan(base, world, { ...intent, authority: { ...intent.authority, maxSpend: { currency: 'USD', minor: 100 } } });
+    expect(v.checks.find((c) => c.id === 'budget')!.ok).toBe(false);
+  });
+
+  it('fails unreadable or zone-less times instead of passing them', () => {
+    expect(verifyPlan(base, world, { ...intent, deadline: 'Friday noon' }).checks.find((c) => c.id === 'times')!.ok).toBe(false);
+    expect(verifyPlan(base, world, { ...intent, deadline: '2026-11-20T12:00:00' }).ok).toBe(false);
+  });
+
   it('catches a budget overrun', () => {
     const v = verifyPlan(base, world, { ...intent, budget: sek(30000) });
     expect(v.checks.find((c) => c.id === 'budget')!.ok).toBe(false);
