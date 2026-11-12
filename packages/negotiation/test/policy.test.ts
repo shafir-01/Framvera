@@ -24,14 +24,15 @@ describe('decide', () => {
   const world = smallWorld();
   const pol = policies();
 
-  it('accepts inside the limit, counters at the limit, rejects when no movement is possible', () => {
+  it('accepts inside the limit, counters strictly inside it, rejects when no movement is possible', () => {
     const ok = decide(propose('m1', 'a1', concession('k', 'o1', 'capacity', 300, 340)), pol.a1!, world);
     expect(ok.accept).toBe(true);
     expect(ok.basis).toBe('synthetic-policy');
 
     const counter = decide(propose('m2', 'a1', concession('k', 'o1', 'capacity', 300, 400)), pol.a1!, world);
     expect(counter.accept).toBe(false);
-    expect(counter.counter?.to).toBe(360);
+    expect(counter.counter?.to).toBe(330);
+    expect(counter.counter?.to).not.toBe(360);
 
     const price = decide(propose('m3', 'a4', concession('k', 'o4', 'unitPrice', 3900, 3000)), pol.a4!, world);
     expect(price.accept).toBe(false);
@@ -43,7 +44,9 @@ describe('decide', () => {
     const within = decide(propose('m', 'a1', concession('k', 'o1', 'windowEnd', world.offers[0]!.window.end, new Date(end + 5 * HOUR).toISOString())), pol.a1!, world);
     expect(within.accept).toBe(true);
     const beyond = decide(propose('m', 'a1', concession('k', 'o1', 'windowEnd', world.offers[0]!.window.end, new Date(end + 9 * HOUR).toISOString())), pol.a1!, world);
-    expect(beyond.counter?.to).toBe(new Date(end + 6 * HOUR).toISOString());
+    const countered = Date.parse(String(beyond.counter?.to));
+    expect(countered).toBeGreaterThan(end);
+    expect(countered).toBeLessThan(end + 6 * HOUR);
   });
 
   it('refuses proposals sent to the wrong supplier and buyer-side terms', () => {
@@ -60,7 +63,8 @@ describe('decide', () => {
     const contingent = decide(propose('m', 'a3', concession('k', 'o3', 'unitPrice', 5000, 4400), ['m0']), pol.a3!, world);
     expect(plain.accept).toBe(true);
     expect(contingent.accept).toBe(false);
-    expect(contingent.counter?.to).toBe(Math.ceil(4400 * 1.08));
+    expect(Number(contingent.counter?.to)).toBeGreaterThan(Math.ceil(4400 * 1.08));
+    expect(Number(contingent.counter?.to)).toBeLessThan(5000);
   });
 
   it('never accepts or counters beyond a private limit (property)', () => {
@@ -98,7 +102,7 @@ describe('decide', () => {
           if (d.accept) expect(dir * (numeric(field, to)! - limit)).toBeGreaterThanOrEqual(0);
           if (d.counter) {
             const c = numeric(field, d.counter.to)!;
-            expect(dir * (c - limit)).toBeGreaterThanOrEqual(0);
+            expect(dir * (c - limit)).toBeGreaterThan(0);
             expect(dir * (numeric(field, from)! - c)).toBeGreaterThan(0);
           }
         },

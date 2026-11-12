@@ -1,6 +1,6 @@
 import type { Coalition, Concession, NegotiableField, NegotiationMessage, Offer, SupplierDecision, World } from '@framvera/contracts';
 import type { PolicyLike, TruthLike } from './types.ts';
-import { HOUR, findOffer, fmtMoney, money, numeric, sameKind, supplierDirection } from './util.ts';
+import { HOUR, findOffer, fmtMoney, isTimeField, money, numeric, sameKind, supplierDirection } from './util.ts';
 
 export type Answerable = Extract<NegotiationMessage, { type: 'Propose' } | { type: 'AskPreference' } | { type: 'CounterOffer' }>;
 
@@ -75,9 +75,10 @@ function jointShare(msg: Answerable, c: Concession, ctx: DecideContext): number 
 }
 
 /**
- * Deterministic private supplier policy. Accepts a term inside the supplier's limits, counters with the
- * closest term it can commit to, or rejects. A field that needs paid overtime is answered with a counter
- * that adds the overtime charge to the setup fee; accepting that counter binds both. Contingent proposals
+ * Deterministic private supplier policy. Answers only terms the offer publishes as negotiable. Accepts a
+ * term inside the supplier's limits, counters with a term strictly inside them, or rejects. A field that
+ * needs paid overtime is answered with a counter that adds the overtime charge to the setup fee; accepting
+ * that counter binds both. Contingent proposals
  * carry a hold risk, so price floors rise by up to 10% for a supplier with low risk tolerance. A joint
  * order is accepted only when the supplier's share of the proposed split meets its floor.
  * Never accepts or counters beyond a private limit.
@@ -92,6 +93,7 @@ export function decide(msg: NegotiationMessage, policy: PolicyLike, world: World
   if (!offer) return reply(msg, false, 'No such offer.');
   if (offer.actor !== msg.to) return reply(msg, false, 'This offer belongs to another supplier.');
   const field = c.target.field;
+  if (!offer.negotiable.includes(field)) return reply(msg, false, 'This term is not open for negotiation.');
 
   const limit = privateLimit(policy, offer, field);
   if (field === 'joint') {
@@ -128,16 +130,41 @@ export function decide(msg: NegotiationMessage, policy: PolicyLike, world: World
     }
     return reply(msg, true, 'Accepted as proposed.');
   }
-  if (premium === 0 && dir * (from - effective) > 0) {
+  const term = premium === 0 ? counterTerm(field, from, effective, dir) : undefined;
+  if (term !== undefined) {
     const counter: Concession = {
       ...c,
       id: `${c.id}:counter`,
-      to: sameKind(field, c.to, effective),
-      rationale: 'Supplier counter: the closest term this supplier can commit to.',
+      to: sameKind(field, c.to, term),
+      rationale: 'Supplier counter: a term this supplier can commit to.',
     };
-    return reply(msg, false, 'Can move part of the way; countering with the closest term we can commit to.', counter);
+    return reply(msg, false, 'Can move part of the way; countering with a term we can commit to.', counter);
   }
   return reply(msg, false, 'Cannot move that far on this term.');
+}
+
+const MINUTE = 60_000;
+
+/** A round step size: 1, 2 or 5 times a power of ten, no larger than `target`. */
+function roundStep(target: number): number {
+  if (target < 1) return 1;
+  const p = 10 ** Math.floor(Math.log10(target));
+  return [5, 2, 1].map((k) => k * p).find((s) => s <= target) ?? p;
+}
+
+/**
+ * The counter term: halfway from the current term towards the private limit, moved onto a round step on
+ * the supplier's side. It always stays strictly between the two, so a counter never lands on the limit
+ * and one lowball question cannot read it. Undefined when no such step exists.
+ */
+function counterTerm(field: NegotiableField, from: number, limit: number, dir: 1 | -1): number | undefined {
+  const gap = dir * (from - limit);
+  if (gap <= 0) return undefined;
+  const grid = isTimeField(field) ? (gap >= 2 * HOUR ? 30 * MINUTE : 15 * MINUTE) : roundStep(gap / 4);
+  const mid = limit + (dir * gap) / 2;
+  const up = Math.ceil(mid / grid) * grid;
+  const down = Math.floor(mid / grid) * grid;
+  return (dir > 0 ? [up, down] : [down, up]).find((t) => dir * (t - limit) > 0 && dir * (from - t) > 0);
 }
 
 export interface SupplierDesk {

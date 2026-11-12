@@ -77,6 +77,18 @@ describe('compileIntent', () => {
     expect(r.questions).toContain('Is this for one site?');
   });
 
+  it('turns a model deadline or flexibility the request does not state into a question, not a value', async () => {
+    const { client } = fakeClient({
+      text: JSON.stringify({ quantity: 300, budgetMinor: 2_000_000, currency: 'SEK', deadline: '2026-12-01T11:00:00Z', deliverTo: null, deadlineFlexHours: 48, budgetFlexMinor: 500_000, questions: [] }),
+    });
+    const r = await compileIntent('We want 300 kits for 20 000 kr', world, { now: FLAGSHIP_CREATED, client });
+    expect(r.intent.quantity).toBe(300);
+    expect(r.intent.budget.minor).toBe(2_000_000);
+    expect(r.intent.deadline).not.toBe('2026-12-01T11:00:00.000Z');
+    expect(r.questions).toContain('When must everything be delivered?');
+    expect(r.intent.negotiable).toEqual({});
+  });
+
   it('falls back on refusal or unreadable output', async () => {
     const { client } = fakeClient({ text: '', stop: 'refusal' });
     const r = await compileIntent(flagship.text, world, { now: FLAGSHIP_CREATED, client });
