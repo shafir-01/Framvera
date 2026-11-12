@@ -417,7 +417,7 @@ export interface Recovery {
   extraCost: Money;
   slipHours: number;
   /** Plans rejected because they broke accepted commitments, with reasons. */
-  rejected: { description: string; reason: string }[];
+  rejected: { description: string; reason: string; extraCost?: Money; slipHours?: number }[];
   core?: InfeasibleCore; // when no permissible recovery exists
   concessionsNeeded?: Concession[];
 }
