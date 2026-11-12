@@ -1,23 +1,25 @@
 {
-  "generatedAt": "2026-11-12T14:19:29.059Z",
+  "generatedAt": "2026-11-12T15:47:46.338Z",
   "base": "http://localhost:8823",
-  "market": "m-042de8a9-eb5",
+  "market": "m-3594211f-ae8",
   "paypal": "sandbox",
   "steps": [
     {
       "step": "status",
       "command": "curl -s -X GET http://localhost:8823/api/status",
       "status": 200,
-      "ms": 22,
+      "ms": 21,
       "result": {
         "build": {
-          "commit": "0c6af5bf364db6f808df01870678db1f695cec6e",
+          "commit": "6443781e242c5c3b7a243baf91104c59b147b5d5",
           "source": "local"
         },
         "paypal": {
           "env": "sandbox",
           "configured": true,
-          "gateway": "paypal-sandbox"
+          "gateway": "paypal-sandbox",
+          "clientId": "[public client id present]",
+          "currency": "SEK"
         },
         "services": {
           "market": true,
@@ -47,9 +49,9 @@
       "step": "create market",
       "command": "curl -s -X POST http://localhost:8823/api/markets -H 'content-type: application/json' -d '{\"template\":\"flagship\"}'",
       "status": 201,
-      "ms": 26,
+      "ms": 25,
       "result": {
-        "market": "m-042de8a9-eb5",
+        "market": "m-3594211f-ae8",
         "template": "flagship",
         "world": "Promotional kits, Stockholm",
         "actors": 27,
@@ -73,15 +75,15 @@
     },
     {
       "step": "analyze",
-      "command": "curl -s -X POST http://localhost:8823/api/markets/m-042de8a9-eb5/analyze",
+      "command": "curl -s -X POST http://localhost:8823/api/markets/m-3594211f-ae8/analyze",
       "status": 200,
-      "ms": 3303,
+      "ms": 3319,
       "result": {
         "status": "infeasible",
         "solver": {
           "name": "HiGHS",
           "version": "1.15 (highs-js 1.15.4, WebAssembly)",
-          "ms": 3275.7
+          "ms": 3298.9
         },
         "core": {
           "summary": "No combination of the published offers is within 55 000 kr. For the full order, with the production steps in their required order, these 14 conditions cannot all hold at once. Relaxing any single one of them would make a plan possible.",
@@ -109,9 +111,9 @@
     },
     {
       "step": "invent",
-      "command": "curl -s -X POST http://localhost:8823/api/markets/m-042de8a9-eb5/invent",
+      "command": "curl -s -X POST http://localhost:8823/api/markets/m-3594211f-ae8/invent",
       "status": 200,
-      "ms": 1407,
+      "ms": 1175,
       "result": {
         "interventions": [
           {
@@ -380,9 +382,9 @@
     },
     {
       "step": "negotiate",
-      "command": "curl -s -X POST http://localhost:8823/api/markets/m-042de8a9-eb5/negotiate",
+      "command": "curl -s -X POST http://localhost:8823/api/markets/m-3594211f-ae8/negotiate",
       "status": 200,
-      "ms": 15328,
+      "ms": 15299,
       "result": {
         "outcome": "feasible",
         "queriesUsed": 3,
@@ -512,9 +514,9 @@
     },
     {
       "step": "verify",
-      "command": "curl -s -X POST http://localhost:8823/api/plans/plan-1d100d7e/verify -H 'content-type: application/json' -d '{\"market\":\"m-042de8a9-eb5\"}'",
+      "command": "curl -s -X POST http://localhost:8823/api/plans/plan-1d100d7e/verify -H 'content-type: application/json' -d '{\"market\":\"m-3594211f-ae8\"}'",
       "status": 200,
-      "ms": 27,
+      "ms": 20,
       "result": {
         "ok": true,
         "checks": [
@@ -536,7 +538,7 @@
     },
     {
       "step": "commit",
-      "command": "curl -s -X POST http://localhost:8823/api/agreements/plan-1d100d7e/commit -H 'content-type: application/json' -d '{\"market\":\"m-042de8a9-eb5\"}'",
+      "command": "curl -s -X POST http://localhost:8823/api/agreements/plan-1d100d7e/commit -H 'content-type: application/json' -d '{\"market\":\"m-3594211f-ae8\"}'",
       "status": 201,
       "ms": 22,
       "result": {
@@ -632,9 +634,9 @@
     },
     {
       "step": "options discover",
-      "command": "curl -s -X POST http://localhost:8823/api/markets/m-042de8a9-eb5/options/discover",
+      "command": "curl -s -X POST http://localhost:8823/api/markets/m-3594211f-ae8/options/discover",
       "status": 200,
-      "ms": 22,
+      "ms": 24,
       "result": {
         "risks": [
           {
@@ -693,9 +695,9 @@
     },
     {
       "step": "options value",
-      "command": "curl -s -X POST http://localhost:8823/api/markets/m-042de8a9-eb5/options/value -H 'content-type: application/json' -d '{\"scenarios\":500}'",
+      "command": "curl -s -X POST http://localhost:8823/api/markets/m-3594211f-ae8/options/value -H 'content-type: application/json' -d '{\"scenarios\":500}'",
       "status": 200,
-      "ms": 1849,
+      "ms": 1691,
       "result": {
         "label": "planner-estimate",
         "scenarios": 500,
@@ -718,9 +720,9 @@
     },
     {
       "step": "options buy",
-      "command": "curl -s -X POST http://localhost:8823/api/markets/m-042de8a9-eb5/options/buy -H 'content-type: application/json' -d '{}'",
+      "command": "curl -s -X POST http://localhost:8823/api/markets/m-3594211f-ae8/options/buy -H 'content-type: application/json' -d '{}'",
       "status": 200,
-      "ms": 25,
+      "ms": 20,
       "result": {
         "purchased": [
           "opt:obl:plan-1d100d7e:1:o-orebro"
@@ -728,42 +730,25 @@
       }
     },
     {
-      "step": "grant payment scope",
-      "command": "curl -s -X POST http://localhost:8823/api/markets/m-042de8a9-eb5/authority -H 'content-type: application/json' -d '{\"mayPreparePayments\":true}'",
+      "step": "buyer approves payment (grants payment authority for this agreement version only)",
+      "command": "curl -s -X POST http://localhost:8823/api/agreements/agr:plan-1d100d7e/approve-payment -H 'content-type: application/json' -d '{\"market\":\"m-3594211f-ae8\",\"payee\":\"a-soderberg\",\"termsHash\":\"136343e02dc8d3ebc390c45905ac0115cddd84da6abc13c647277a7f590586d0\",\"amount\":{\"currency\":\"SEK\",\"minor\":540000}}'",
       "status": 200,
-      "ms": 38,
-      "result": {
-        "authority": {
-          "mayNegotiate": true,
-          "mayReserve": true,
-          "mayPreparePayments": true,
-          "maxSpend": {
-            "currency": "SEK",
-            "minor": 5500000
-          }
-        }
-      }
-    },
-    {
-      "step": "buyer approves payment",
-      "command": "curl -s -X POST http://localhost:8823/api/agreements/agr:plan-1d100d7e/approve-payment -H 'content-type: application/json' -d '{\"market\":\"m-042de8a9-eb5\",\"payee\":\"a-soderberg\",\"termsHash\":\"136343e02dc8d3ebc390c45905ac0115cddd84da6abc13c647277a7f590586d0\",\"amount\":{\"currency\":\"SEK\",\"minor\":540000}}'",
-      "status": 200,
-      "ms": 42,
+      "ms": 22,
       "result": {
         "payee": "a-soderberg",
         "amount": "5400.00 SEK",
         "obligations": [
           "obl:plan-1d100d7e:0"
         ],
-        "expiresAt": "2026-11-12T14:33:55.555Z",
+        "expiresAt": "2026-11-12T16:02:16.805Z",
         "approvalToken": "[redacted]"
       }
     },
     {
       "step": "order without approval (refused)",
-      "command": "curl -s -X POST http://localhost:8823/api/payments/orders -H 'content-type: application/json' -d '{\"market\":\"m-042de8a9-eb5\",\"agreementId\":\"agr:plan-1d100d7e\"}'",
+      "command": "curl -s -X POST http://localhost:8823/api/payments/orders -H 'content-type: application/json' -d '{\"market\":\"m-3594211f-ae8\",\"agreementId\":\"agr:plan-1d100d7e\"}'",
       "status": 403,
-      "ms": 40,
+      "ms": 16,
       "result": {
         "error": {
           "code": "approval_required",
@@ -773,26 +758,26 @@
     },
     {
       "step": "create PayPal order",
-      "command": "curl -s -X POST http://localhost:8823/api/payments/orders -H 'content-type: application/json' -d '{\"approvalToken\":\"[redacted]\",\"market\":\"m-042de8a9-eb5\"}'",
+      "command": "curl -s -X POST http://localhost:8823/api/payments/orders -H 'content-type: application/json' -d '{\"approvalToken\":\"[redacted]\",\"market\":\"m-3594211f-ae8\"}'",
       "status": 201,
-      "ms": 1317,
+      "ms": 1289,
       "result": {
-        "id": "pay-2789b890-a74",
+        "id": "pay-7f7d9c2b-c66",
         "state": "PAYER_ACTION_REQUIRED",
         "payee": "a-soderberg",
         "amount": "5400.00 SEK",
         "obligations": [
           "obl:plan-1d100d7e:0"
         ],
-        "operationKey": "1bb2a43a22e8e953c0663def6a1dc01a",
+        "operationKey": "046fccdc2f8aee45fe664ff0f8168efa",
         "paypal": {
           "env": "sandbox",
-          "orderId": "7F605332V3944731X",
+          "orderId": "23063349M86940328",
           "status": "PAYER_ACTION_REQUIRED",
           "orderStatus": "PAYER_ACTION_REQUIRED",
           "captured": null,
           "debugIds": [
-            "f63853674997d"
+            "f20924591eba4"
           ],
           "approveHost": "www.sandbox.paypal.com"
         }
@@ -800,9 +785,9 @@
     },
     {
       "step": "capture before buyer approval (refused)",
-      "command": "curl -s -X POST http://localhost:8823/api/payments/pay-2789b890-a74/capture",
+      "command": "curl -s -X POST http://localhost:8823/api/payments/pay-7f7d9c2b-c66/capture",
       "status": 409,
-      "ms": 694,
+      "ms": 943,
       "result": {
         "error": {
           "code": "not_approved",
@@ -813,7 +798,7 @@
     {
       "step": "sandbox test buyer approves on PayPal checkout (test harness, headless browser)",
       "status": "completed",
-      "ms": 17071,
+      "ms": 16321,
       "result": {
         "steps": [
           "checkout-opened",
@@ -828,29 +813,29 @@
     },
     {
       "step": "independent fetch after approval",
-      "command": "curl -s -X GET http://localhost:8823/api/payments/pay-2789b890-a74",
+      "command": "curl -s -X GET http://localhost:8823/api/payments/pay-7f7d9c2b-c66",
       "status": 200,
-      "ms": 458,
+      "ms": 369,
       "result": {
-        "id": "pay-2789b890-a74",
+        "id": "pay-7f7d9c2b-c66",
         "state": "APPROVED",
         "payee": "a-soderberg",
         "amount": "5400.00 SEK",
         "obligations": [
           "obl:plan-1d100d7e:0"
         ],
-        "operationKey": "1bb2a43a22e8e953c0663def6a1dc01a",
+        "operationKey": "046fccdc2f8aee45fe664ff0f8168efa",
         "paypal": {
           "env": "sandbox",
-          "orderId": "7F605332V3944731X",
+          "orderId": "23063349M86940328",
           "status": "APPROVED",
           "orderStatus": "APPROVED",
           "captured": null,
-          "lastFetchedAt": "2026-11-12T14:19:15.415Z",
+          "lastFetchedAt": "2026-11-12T15:47:36.073Z",
           "debugIds": [
-            "f63853674997d",
-            "f5227417a03da",
-            "f666995dc565a"
+            "f20924591eba4",
+            "f518495217dcb",
+            "f34082333e8cf"
           ],
           "approveHost": "www.sandbox.paypal.com"
         }
@@ -858,32 +843,32 @@
     },
     {
       "step": "capture",
-      "command": "curl -s -X POST http://localhost:8823/api/payments/pay-2789b890-a74/capture",
+      "command": "curl -s -X POST http://localhost:8823/api/payments/pay-7f7d9c2b-c66/capture",
       "status": 200,
-      "ms": 1524,
+      "ms": 1512,
       "result": {
-        "id": "pay-2789b890-a74",
+        "id": "pay-7f7d9c2b-c66",
         "state": "CAPTURE_COMPLETED",
         "payee": "a-soderberg",
         "amount": "5400.00 SEK",
         "obligations": [
           "obl:plan-1d100d7e:0"
         ],
-        "operationKey": "1bb2a43a22e8e953c0663def6a1dc01a",
+        "operationKey": "046fccdc2f8aee45fe664ff0f8168efa",
         "paypal": {
           "env": "sandbox",
-          "orderId": "7F605332V3944731X",
+          "orderId": "23063349M86940328",
           "status": "COMPLETED",
           "orderStatus": "COMPLETED",
-          "captureId": "04D423425Y938210H",
+          "captureId": "60G992738V5608927",
           "captureStatus": "COMPLETED",
           "captured": "5400.00 SEK",
-          "lastFetchedAt": "2026-11-12T14:19:15.415Z",
+          "lastFetchedAt": "2026-11-12T15:47:36.073Z",
           "debugIds": [
-            "f63853674997d",
-            "f5227417a03da",
-            "f666995dc565a",
-            "f666995d822fc"
+            "f20924591eba4",
+            "f518495217dcb",
+            "f34082333e8cf",
+            "f3408239c4bba"
           ],
           "approveHost": "www.sandbox.paypal.com"
         }
@@ -891,33 +876,33 @@
     },
     {
       "step": "independent fetch after capture",
-      "command": "curl -s -X GET http://localhost:8823/api/payments/pay-2789b890-a74",
+      "command": "curl -s -X GET http://localhost:8823/api/payments/pay-7f7d9c2b-c66",
       "status": 200,
-      "ms": 944,
+      "ms": 1038,
       "result": {
-        "id": "pay-2789b890-a74",
+        "id": "pay-7f7d9c2b-c66",
         "state": "CAPTURE_COMPLETED",
         "payee": "a-soderberg",
         "amount": "5400.00 SEK",
         "obligations": [
           "obl:plan-1d100d7e:0"
         ],
-        "operationKey": "1bb2a43a22e8e953c0663def6a1dc01a",
+        "operationKey": "046fccdc2f8aee45fe664ff0f8168efa",
         "paypal": {
           "env": "sandbox",
-          "orderId": "7F605332V3944731X",
+          "orderId": "23063349M86940328",
           "status": "COMPLETED",
           "orderStatus": "COMPLETED",
-          "captureId": "04D423425Y938210H",
+          "captureId": "60G992738V5608927",
           "captureStatus": "COMPLETED",
           "captured": "5400.00 SEK",
-          "lastFetchedAt": "2026-11-12T14:19:17.884Z",
+          "lastFetchedAt": "2026-11-12T15:47:38.619Z",
           "debugIds": [
-            "f63853674997d",
-            "f5227417a03da",
-            "f666995dc565a",
-            "f666995d822fc",
-            "f28968803248b"
+            "f20924591eba4",
+            "f518495217dcb",
+            "f34082333e8cf",
+            "f3408239c4bba",
+            "f28491871f041"
           ],
           "approveHost": "www.sandbox.paypal.com"
         }
@@ -925,15 +910,14 @@
     },
     {
       "step": "disrupt",
-      "command": "curl -s -X POST http://localhost:8823/api/markets/m-042de8a9-eb5/disrupt -H 'content-type: application/json' -d '{\"kind\":\"withdraw\",\"actor\":\"a-lindqvist\",\"offer\":\"joint:shared:o-roslagen>o-lindqvist\",\"detail\":\"Lindqvists Transport loses its Friday driver and withdraws from the shared van route.\",\"at\":\"2026-11-18T12:00:00.000Z\"}'",
+      "command": "curl -s -X POST http://localhost:8823/api/markets/m-3594211f-ae8/disrupt -H 'content-type: application/json' -d '{\"kind\":\"withdraw\",\"actor\":\"a-lindqvist\",\"offer\":\"joint:shared:o-roslagen>o-lindqvist\",\"detail\":\"Lindqvists Transport loses its Friday driver and withdraws from the shared van route.\",\"at\":\"2026-11-18T12:00:00.000Z\"}'",
       "status": 200,
-      "ms": 21,
+      "ms": 30,
       "result": {
         "disruption": {
-          "id": "d-f35ea973",
+          "id": "d-5b35f2d8",
           "kind": "withdraw",
           "actor": "a-lindqvist",
-          "offer": "joint:shared:o-roslagen>o-lindqvist",
           "detail": "Lindqvists Transport loses its Friday driver and withdraws from the shared van route.",
           "at": "2026-11-18T12:00:00.000Z"
         },
@@ -946,9 +930,9 @@
     },
     {
       "step": "exercise standby option",
-      "command": "curl -s -X POST http://localhost:8823/api/markets/m-042de8a9-eb5/options/exercise",
+      "command": "curl -s -X POST http://localhost:8823/api/markets/m-3594211f-ae8/options/exercise",
       "status": 200,
-      "ms": 19,
+      "ms": 21,
       "result": {
         "exercised": false,
         "absorbed": false,
@@ -959,11 +943,11 @@
     },
     {
       "step": "recover",
-      "command": "curl -s -X POST http://localhost:8823/api/markets/m-042de8a9-eb5/recover",
+      "command": "curl -s -X POST http://localhost:8823/api/markets/m-3594211f-ae8/recover",
       "status": 200,
-      "ms": 11093,
+      "ms": 7597,
       "result": {
-        "feasible": false,
+        "feasible": true,
         "kept": [
           "obl:plan-1d100d7e:0",
           "obl:plan-1d100d7e:1",
@@ -971,12 +955,27 @@
           "obl:plan-1d100d7e:3"
         ],
         "amended": [],
-        "cancelled": [],
-        "added": [],
-        "extraCost": "0.00 SEK",
-        "slipHours": 0,
-        "objective": "Lexicographic: fewest changed obligations, then least extra cost, then least slip.",
+        "cancelled": [
+          "obl:plan-1d100d7e:4"
+        ],
+        "added": [
+          {
+            "offer": "joint:shared:o-roslagen>o-malardalen",
+            "actor": "a-malardalen",
+            "qty": 500,
+            "cost": "8300.00 SEK"
+          }
+        ],
+        "extraCost": "1600.00 SEK",
+        "slipHours": 1.5,
+        "objective": "Lexicographic: fewest changed obligations, then least extra cost, then least slip. Best of 1 permissible among 4 evaluated candidates.",
         "rejected": [
+          {
+            "description": "Cheapest new plan from scratch",
+            "reason": "Cancels the accepted obligation of Nacka Emballage (package, 500 units), which the disruption did not affect.",
+            "extraCost": "600.00 SEK",
+            "slipHours": 2.5
+          },
           {
             "description": "Keep the original plan unchanged",
             "reason": "Relies on Lindqvists Transport, which can no longer deliver. Uses Lindqvists Transport, whose offer is no longer available. Offer joint:shared:o-roslagen>o-lindqvist does not exist.",
@@ -990,78 +989,107 @@
             "slipHours": 0
           }
         ],
-        "core": {
-          "summary": "No combination of the published offers is within 55 000 kr while keeping the accepted commitments. For the full order, with the production steps in their required order, these 6 conditions cannot all hold at once. Relaxing any single one of them would make a plan possible.",
-          "constraints": [
-            "Roslagens Åkeri can only work between Thu 19 Nov 06:00 UTC and Thu 19 Nov 14:00 UTC.",
-            "Uppsala Godslinjen can only work between Thu 19 Nov 05:00 UTC and Thu 19 Nov 11:00 UTC.",
-            "Lindqvists Transport has room for at most 200 kits.",
-            "Mälardalens Budservice has room for at most 150 kits.",
-            "Cykelbud Söder has room for at most 90 kits.",
-            "Total spend must stay within 55 000 kr."
-          ]
-        },
+        "core": null,
         "negotiated": {
           "outcome": "feasible",
           "accepted": [
             {
-              "id": "cn-875ab6bd",
+              "id": "cn-756e6b73",
               "target": {
                 "kind": "offer",
-                "offer": "o-lindqvist",
+                "offer": "o-malardalen",
                 "field": "joint"
               },
               "from": "separate",
-              "to": "joint:shared:o-roslagen>o-lindqvist",
+              "to": "joint:shared:o-roslagen>o-malardalen",
               "estimate": {
                 "currency": "SEK",
-                "minor": 45000
+                "minor": 72500
               },
-              "rationale": "Lindqvists Transport runs the job in its window using Roslagens Åkeri's capacity of 600 kits instead of its own 200."
+              "rationale": "Mälardalens Budservice runs the job in its window using Roslagens Åkeri's capacity of 600 kits instead of its own 150."
             },
             {
-              "id": "cn-620cd2b2",
+              "id": "cn-83ac1c81",
               "target": {
                 "kind": "offer",
                 "offer": "o-roslagen",
                 "field": "joint"
               },
               "from": "separate",
-              "to": "joint:shared:o-roslagen>o-lindqvist",
+              "to": "joint:shared:o-roslagen>o-malardalen",
               "estimate": {
                 "currency": "SEK",
                 "minor": 60000
               },
-              "rationale": "Roslagens Åkeri lends its capacity of 600 kits to a job Lindqvists Transport runs in its own window."
+              "rationale": "Roslagens Åkeri lends its capacity of 600 kits to a job Mälardalens Budservice runs in its own window."
             }
           ],
           "messages": 4,
-          "feasibleAfter": false
+          "feasibleAfter": true
         }
       }
     },
     {
-      "step": "events",
-      "command": "curl -s -X GET http://localhost:8823/api/markets/m-042de8a9-eb5/events?format=json",
+      "step": "commit recovery",
+      "command": "curl -s -X POST http://localhost:8823/api/markets/m-3594211f-ae8/recover/commit -H 'content-type: application/json' -d '{\"termsHash\":\"04f6616eb0efee0a0243abfd828c15c6cbdb7a783f146e4d18cdb75036405292\"}'",
       "status": 200,
-      "ms": 20,
+      "ms": 24,
       "result": {
-        "total": 46,
+        "version": 2,
+        "state": "COMMITTED",
+        "termsHash": "04f6616eb0efee0a0243abfd828c15c6cbdb7a783f146e4d18cdb75036405292",
+        "obligations": [
+          {
+            "id": "obl:plan-1d100d7e:0",
+            "actor": "a-soderberg",
+            "state": "ACTIVE"
+          },
+          {
+            "id": "obl:plan-1d100d7e:1",
+            "actor": "a-boras",
+            "state": "ACTIVE"
+          },
+          {
+            "id": "obl:plan-1d100d7e:2",
+            "actor": "a-kista",
+            "state": "ACTIVE"
+          },
+          {
+            "id": "obl:plan-1d100d7e:3",
+            "actor": "a-nacka",
+            "state": "ACTIVE"
+          },
+          {
+            "id": "obl:agr:plan-1d100d7e:v2:0",
+            "actor": "a-malardalen",
+            "state": "ACTIVE"
+          }
+        ]
+      }
+    },
+    {
+      "step": "events",
+      "command": "curl -s -X GET http://localhost:8823/api/markets/m-3594211f-ae8/events?format=json",
+      "status": 200,
+      "ms": 18,
+      "result": {
+        "total": 61,
         "byType": {
           "world.created": 1,
           "solve.completed": 3,
           "intervention.found": 2,
           "claim.challenged": 1,
-          "negotiation.message": 21,
+          "negotiation.message": 27,
           "negotiation.decision": 5,
-          "agreement.state": 2,
-          "obligation.state": 5,
+          "agreement.state": 4,
+          "obligation.state": 11,
           "intent.compiled": 1,
           "payment.state": 3,
           "disruption.applied": 1,
-          "recovery.proposed": 1
+          "recovery.proposed": 1,
+          "recovery.committed": 1
         },
-        "withCauses": 45,
+        "withCauses": 60,
         "sources": [
           "synthetic-market",
           "solver",
@@ -1072,7 +1100,7 @@
     },
     {
       "step": "trace payment",
-      "command": "curl -s -X GET http://localhost:8823/api/markets/m-042de8a9-eb5/trace/pay-2789b890-a74",
+      "command": "curl -s -X GET http://localhost:8823/api/markets/m-3594211f-ae8/trace/pay-7f7d9c2b-c66",
       "status": 200,
       "ms": 17,
       "result": [

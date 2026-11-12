@@ -28,6 +28,10 @@ export interface Session {
   disruptions: unknown[];
   options?: unknown;
   mechanisms?: Record<string, unknown>;
+  /** Payment authority the buyer granted for one exact agreement version by approving it. */
+  grants?: Record<string, { termsHash: string; at: string }>;
+  /** Scopes the buyer explicitly withheld; an approval never overrides these. */
+  withheld?: string[];
 }
 
 interface LedgerLike {

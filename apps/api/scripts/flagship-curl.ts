@@ -49,7 +49,7 @@ const fail = (step: string, r: any) => {
 let market = '';
 try {
   const st = curl('status', 'GET', '/api/status');
-  record('status', st, { build: st.json.build, paypal: st.json.paypal, services: st.json.services });
+  record('status', st, { build: st.json.build, paypal: { ...st.json.paypal, clientId: st.json.paypal?.clientId ? '[public client id present]' : null }, services: st.json.services });
 
   const m = curl('create market', 'POST', '/api/markets', { template: 'flagship' });
   if (m.status !== 201) fail('create market', m);
@@ -94,15 +94,12 @@ try {
     record('options buy', buy, { purchased: bought });
   } else record('options discover', opts, opts.json);
 
-  const auth = curl('grant payment scope', 'POST', `/api/markets/${market}/authority`, { mayPreparePayments: true });
-  record('grant payment scope', auth, auth.json);
-
   const payee = agreement.obligations[0].actor;
   const owed = agreement.obligations.filter((o: any) => o.actor === payee).reduce((a: number, o: any) => a + o.amount.minor, 0);
   const amount = { currency: agreement.obligations[0].amount.currency, minor: owed };
   const ap = curl('buyer approves payment', 'POST', `/api/agreements/${agreement.id}/approve-payment`, { market, payee, termsHash: agreement.termsHash, amount });
   if (ap.status !== 200) fail('buyer approves payment', ap);
-  record('buyer approves payment', ap, { payee, amount: money(ap.json.amount), obligations: ap.json.obligations, expiresAt: ap.json.expiresAt, approvalToken: '[redacted]' });
+  record('buyer approves payment (grants payment authority for this agreement version only)', ap, { payee, amount: money(ap.json.amount), obligations: ap.json.obligations, expiresAt: ap.json.expiresAt, approvalToken: '[redacted]' });
 
   const noToken = curl('order without approval', 'POST', '/api/payments/orders', { market, agreementId: agreement.id });
   record('order without approval (refused)', noToken, noToken.json);

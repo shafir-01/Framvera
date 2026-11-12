@@ -253,7 +253,15 @@ export function createApp(deps: Deps) {
     const s = session(c.req.param('id'));
     const b = await body(c);
     const a = { ...s.intent.authority };
-    for (const k of ['mayNegotiate', 'mayReserve', 'mayPreparePayments'] as const) if (typeof b[k] === 'boolean') a[k] = b[k];
+    const withheld = new Set(s.withheld ?? []);
+    for (const k of ['mayNegotiate', 'mayReserve', 'mayPreparePayments'] as const) {
+      if (typeof b[k] !== 'boolean') continue;
+      a[k] = b[k];
+      if (b[k]) withheld.delete(k);
+      else withheld.add(k);
+    }
+    s.withheld = [...withheld];
+    if (b.mayPreparePayments === false) s.grants = {};
     if (b.maxSpend !== undefined) {
       if (!isMoney(b.maxSpend) || b.maxSpend.currency !== s.intent.budget.currency || b.maxSpend.minor < 0) throw new HttpError(400, 'bad_request', 'Spending limit must be an amount in the budget currency');
       if (b.maxSpend.minor > s.intent.budget.minor) throw new HttpError(422, 'over_budget', 'The spending limit cannot exceed the budget');
@@ -414,17 +422,27 @@ export function createApp(deps: Deps) {
     return { obligations: mine.map((o) => o.id), amount: { currency: mine[0]!.amount.currency, minor: mine.reduce((a, o) => a + o.amount.minor, 0) } as Money };
   };
 
+  const hasGrant = (s: Session, a: Agreement) => s.grants?.[a.id]?.termsHash === a.termsHash && !s.withheld?.includes('mayPreparePayments');
+  /** Authority for preparing this agreement's payments: the intent's own, widened only by a grant for this exact agreement version. */
+  const authorityFor = (s: Session, a: Agreement) => (hasGrant(s, a) ? { ...s.intent.authority, mayPreparePayments: true } : s.intent.authority);
+
   app.post('/api/agreements/:id/approve-payment', async (c) => {
     const b = await body(c);
     const { s, agreement } = findAgreement(c.req.param('id'), b.market);
     if (agreement.state !== 'COMMITTED' && agreement.state !== 'FULFILLING') throw new HttpError(409, 'state', 'Agreement is not committed');
-    if (s.intent.authority?.mayPreparePayments === false) throw new HttpError(403, 'scope', 'The buyer has not allowed payment preparation');
+    if (s.withheld?.includes('mayPreparePayments')) throw new HttpError(403, 'scope', 'The buyer has not allowed payment preparation');
     if (b.termsHash !== agreement.termsHash) throw new HttpError(409, 'terms_changed', 'The agreement terms changed since you reviewed them');
     const due = typeof b.payee === 'string' ? owedTo(s, agreement, b.payee) : null;
     if (!due) throw new HttpError(404, 'not_found', 'Nothing is owed to that supplier');
     if (!isMoney(b.amount) || !sameMoney(b.amount, due.amount)) throw new HttpError(409, 'amount_mismatch', 'Approved amount does not match what is owed');
     const max = s.intent.authority?.maxSpend;
     if (max && s.approvals.spent + due.amount.minor > max.minor) throw new HttpError(403, 'over_limit', 'This would exceed the buyer spending limit');
+    // Approving this agreement is the buyer's grant of payment authority for exactly this agreement version.
+    if (!s.intent.authority?.mayPreparePayments && !hasGrant(s, agreement)) {
+      s.grants = { ...(s.grants ?? {}), [agreement.id]: { termsHash: agreement.termsHash, at: new Date().toISOString() } };
+      store.save(s);
+      store.emit(s.id, 'intent.compiled', { intent: s.intent.id, grant: { scope: 'mayPreparePayments', agreement: agreement.id, version: agreement.version, termsHash: agreement.termsHash }, changedBy: 'buyer' }, 'buyer', { causes: store.causal.get(s.id, [`agreement:${agreement.id}`]) });
+    }
     const { token, claim } = approvals.issue({ kind: 'pay', agreement: agreement.id, subject: b.payee, termsHash: agreement.termsHash, amount: due.amount });
     return c.json({ approvalToken: token, expiresAt: new Date(claim.exp).toISOString(), amount: due.amount, obligations: due.obligations });
   });
@@ -475,6 +493,7 @@ export function createApp(deps: Deps) {
     const due = owedTo(s, agreement, claim.subject);
     if (agreement.termsHash !== claim.termsHash || !due || !sameMoney(due.amount, claim.amount)) throw new HttpError(409, 'approval_stale', 'The approval no longer matches the agreement');
     if (usedTokens.has(claim.nonce)) throw new HttpError(403, 'approval_used', 'This approval was already used');
+    if (!authorityFor(s, agreement)?.mayPreparePayments) throw new HttpError(403, 'scope', 'The buyer has not allowed payment preparation for this agreement');
     usedTokens.add(claim.nonce);
     const max = s.intent.authority?.maxSpend;
     if (max && s.approvals.spent + due.amount.minor > max.minor) throw new HttpError(403, 'over_limit', 'This would exceed the buyer spending limit');
@@ -495,7 +514,7 @@ export function createApp(deps: Deps) {
     };
     const extra = { approvedBy: 'buyer', gateway: gw.kind ?? 'paypal-sandbox' };
     try {
-      if (pay?.open) adopt(s, pi, await pay.open(pi, gw, { ...orderOpts, authority: s.intent.authority }), extra);
+      if (pay?.open) adopt(s, pi, await pay.open(pi, gw, { ...orderOpts, authority: authorityFor(s, agreement) }), extra);
       else apply(s, pi, await gw.createOrder(pi, orderOpts), extra);
       paymentIndex.set(pi.id, s.id);
     } catch {
@@ -646,7 +665,10 @@ export function createApp(deps: Deps) {
     const str = (v: unknown) => (typeof v === 'string' && v.length <= 120 ? v : undefined);
     // Market time: an explicit valid time, else the moment the agreement was made.
     const at = typeof b.at === 'string' && !Number.isNaN(Date.parse(b.at)) ? new Date(b.at).toISOString() : s.agreement.createdAt;
-    const d: Disruption = { id: `d-${randomUUID().slice(0, 8)}`, kind: b.kind, actor: str(b.actor), offer: str(b.offer), detail: String(b.detail ?? b.kind).slice(0, 300), at };
+    // A supplier withdrawing from a joint delivery withdraws its own offer; the joint offer then fails with it.
+    const jointWithdraw = b.kind === 'withdraw' && typeof b.actor === 'string' && typeof b.offer === 'string' && !s.world.offers.some((o) => o.id === b.offer && o.actor === b.actor && !o.derivedFrom?.coalition && !o.id.startsWith('joint:'));
+    const own = jointWithdraw ? s.world.offers.find((o) => o.actor === b.actor && !o.id.startsWith('joint:') && !o.derivedFrom?.coalition) : undefined;
+    const d: Disruption = { id: `d-${randomUUID().slice(0, 8)}`, kind: b.kind, actor: str(b.actor), offer: jointWithdraw ? own?.id : str(b.offer), detail: String(b.detail ?? b.kind).slice(0, 300), at };
     if (b.params && typeof b.params === 'object') {
       const p: Record<string, number | string> = {};
       for (const k of ['capacity', 'delayHours', 'unitPriceMinor', 'pricePercent', 'claim']) if (typeof b.params[k] === 'number' || typeof b.params[k] === 'string') p[k] = b.params[k];
@@ -804,6 +826,11 @@ export function createApp(deps: Deps) {
 
   registerDepth(app, { engine, store, session, truthFor, body, fail: (status, code, message) => new HttpError(status, code, message) });
 
+  app.get('/api/config', (c) => {
+    const live = Boolean(gateway) && (gateway.kind ?? 'paypal-sandbox') === 'paypal-sandbox';
+    return c.json({ paypal: { env: 'sandbox', clientId: live && config.paypalClientId ? config.paypalClientId : null, currency: 'SEK', intent: 'capture' } });
+  });
+
   app.get('/api/status', (c) => {
     let payments = 0;
     let agreements = 0;
@@ -816,7 +843,7 @@ export function createApp(deps: Deps) {
       ok: true,
       version: VERSION,
       build,
-      paypal: { env: 'sandbox', configured: kind === 'paypal-sandbox', gateway: kind },
+      paypal: { env: 'sandbox', configured: kind === 'paypal-sandbox', gateway: kind, ...(kind === 'paypal-sandbox' && config.paypalClientId ? { clientId: config.paypalClientId, currency: 'SEK' } : {}) },
       services: {
         ...availability(engine),
         paypalConfigured: kind === 'paypal-sandbox',

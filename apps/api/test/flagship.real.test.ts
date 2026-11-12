@@ -66,10 +66,8 @@ describe('flagship with the real modules', async () => {
     const owed = agreement.obligations.filter((o: any) => o.actor === payee).reduce((a: number, o: any) => a + o.amount.minor, 0);
     const amount = { currency: agreement.obligations[0].amount.currency, minor: owed };
     const approve = () => json(post(app, `/api/agreements/${agreement.id}/approve-payment`, { market: id, payee, termsHash: agreement.termsHash, amount }));
-    expect((await approve()).status).toBe(403);
+    expect(m.body.intent.authority.mayPreparePayments).toBe(false);
     expect((await json(post(app, `/api/markets/${id}/authority`, { maxSpend: { ...amount, minor: 10_000_000_000 } }))).status).toBe(422);
-    const granted = await json(post(app, `/api/markets/${id}/authority`, { mayPreparePayments: true }));
-    expect(granted.body.authority.mayPreparePayments).toBe(true);
     const ap = await approve();
     expect(ap.status).toBe(200);
     const order = await json(post(app, '/api/payments/orders', { approvalToken: ap.body.approvalToken, market: id }));
@@ -118,10 +116,10 @@ describe('flagship with the real modules', async () => {
     expect(rec.body.kept).not.toContain(courier.id);
     for (const r of rec.body.rejected) if (rec.body.candidates?.some((c: any) => c.description === r.description)) expect(r.extraCost).toBeTruthy();
     if (!rec.body.feasible) {
-      // Known gap (see integrator status, BROKEN): no supplier change is proposed on the disrupted world yet.
-      expect(rec.body.core?.constraints?.length ?? 0).toBeGreaterThan(0);
       console.warn('recovery infeasible:', rec.body.core?.summary);
     }
+    expect(rec.body.feasible).toBe(true);
+    expect(rec.body.rejected.some((r: any) => r.extraCost && r.extraCost.minor < rec.body.extraCost.minor)).toBe(true);
 
     if (rec.body.amendment) {
       const done = await json(post(app, `/api/markets/${id}/recover/commit`, { termsHash: rec.body.amendment.termsHash }));

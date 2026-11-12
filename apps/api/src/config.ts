@@ -8,6 +8,8 @@ export interface Config {
   rateLimitPerMin: number;
   heavyLimitPerMin: number;
   paypalConfigured: boolean;
+  /** The PayPal REST client id. Public by design (the browser SDK loads with it); the secret never leaves the server. */
+  paypalClientId: string;
   aiKeyConfigured: boolean;
 }
 
@@ -25,6 +27,7 @@ export function loadConfig(env: Record<string, string | undefined> = process.env
     rateLimitPerMin: int(env.FRAMVERA_RATE_LIMIT, 240),
     heavyLimitPerMin: int(env.FRAMVERA_HEAVY_LIMIT, 40),
     paypalConfigured: Boolean(env.PAYPAL_CLIENT_ID && (env.PAYPAL_CLIENT_SECRET || env.PAYPAL_SECRET)),
+    paypalClientId: env.PAYPAL_CLIENT_ID && (env.PAYPAL_CLIENT_SECRET || env.PAYPAL_SECRET) ? env.PAYPAL_CLIENT_ID : '',
     aiKeyConfigured: Boolean(env.ANTHROPIC_API_KEY),
     ...overrides,
   };

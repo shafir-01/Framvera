@@ -1,4 +1,6 @@
 import { describe, expect, it } from 'vitest';
+import { createApp } from '../src/app.ts';
+import { loadConfig } from '../src/config.ts';
 import { makeApp, post, stubEngine, TestGateway } from './helpers.ts';
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
@@ -112,16 +114,41 @@ describe('scope escalation is refused', () => {
   });
 
   it('payments cannot be prepared when the buyer withheld that scope', async () => {
+    const app = makeApp(stubEngine());
+    const { m, agreement } = await flow(app);
+    await post(app, `/api/markets/${m.id}/authority`, { mayPreparePayments: false });
+    const r = await post(app, `/api/agreements/${agreement.id}/approve-payment`, { market: m.id, payee: 'a1', termsHash: agreement.termsHash, amount: { currency: 'SEK', minor: 3_000_000 } });
+    expect(r.status).toBe(403);
+  });
+
+  it('approving an agreement grants payment authority for that exact agreement only, as a recorded buyer event', async () => {
     const engine = stubEngine();
     const base = engine.flagshipWorld!;
     engine.flagshipWorld = () => {
       const r = base();
       return { ...r, intent: { ...r.intent, authority: { ...r.intent.authority, mayPreparePayments: false } } };
     };
-    const app = makeApp(engine);
+    const gw = new TestGateway();
+    const app = makeApp(engine, gw);
     const { m, agreement } = await flow(app);
-    const r = await post(app, `/api/agreements/${agreement.id}/approve-payment`, { market: m.id, payee: 'a1', termsHash: agreement.termsHash, amount: { currency: 'SEK', minor: 3_000_000 } });
-    expect(r.status).toBe(403);
+    const ap: any = await (await post(app, `/api/agreements/${agreement.id}/approve-payment`, { market: m.id, payee: 'a1', termsHash: agreement.termsHash, amount: { currency: 'SEK', minor: 3_000_000 } })).json();
+    expect(ap.approvalToken).toBeTruthy();
+    const { events }: any = await (await app.request(`/api/markets/${m.id}/events?format=json`)).json();
+    const grant = events.find((e: any) => e.data?.grant);
+    expect(grant.source).toBe('buyer');
+    expect(grant.data.grant).toMatchObject({ scope: 'mayPreparePayments', agreement: agreement.id, termsHash: agreement.termsHash });
+    const market: any = await (await app.request(`/api/markets/${m.id}`)).json();
+    expect(market.intent.authority.mayPreparePayments).toBe(false);
+    expect((await post(app, '/api/payments/orders', { approvalToken: ap.approvalToken, market: m.id })).status).toBe(201);
+  });
+
+  it('serves the public PayPal client id and never the secret', async () => {
+    const app = createApp({ engine: stubEngine(), gateway: new TestGateway(), dataDir: ':memory:', config: loadConfig({ PAYPAL_CLIENT_ID: 'public-client-id', PAYPAL_CLIENT_SECRET: 'do-not-show-this' }) });
+    const cfg: any = await (await app.request('/api/config')).json();
+    expect(cfg.paypal.clientId).toBe('public-client-id');
+    const st: any = await (await app.request('/api/status')).json();
+    expect(st.paypal.clientId).toBe('public-client-id');
+    expect(JSON.stringify(cfg) + JSON.stringify(st)).not.toContain('do-not-show-this');
   });
 });
 
