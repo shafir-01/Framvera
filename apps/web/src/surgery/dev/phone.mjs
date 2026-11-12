@@ -1,0 +1,14 @@
+import { chromium } from '@playwright/test';
+const out = new URL('../../../../../_internal/shots/surgery/05-phone-slider.png', import.meta.url).pathname.replace(/^\/([A-Z]:)/, '$1');
+const browser = await chromium.launch({ channel: 'msedge' });
+const page = await browser.newPage({ viewport: { width: 390, height: 844 }, deviceScaleFactor: 2, isMobile: true, hasTouch: true });
+await page.goto('http://localhost:5287/src/surgery/dev/index.html', { waitUntil: 'networkidle' });
+await page.waitForSelector('.sg-result:not([data-busy])');
+await page.locator('.sg-suggest button').first().click();
+await page.waitForSelector('.sg-result[data-ok]:not([data-busy])', { timeout: 30000 });
+await page.locator('.sg-card[data-open] .sg-lever').first().scrollIntoViewIfNeeded();
+await page.mouse.wheel(0, 200);
+await page.waitForTimeout(1200);
+await page.screenshot({ path: out });
+console.log(await page.locator('.sg-bar').isVisible(), await page.textContent('.sg-bar'));
+await browser.close();
