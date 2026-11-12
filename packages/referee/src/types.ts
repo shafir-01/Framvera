@@ -44,12 +44,15 @@ export interface Deps {
 export type StrategyId =
   | 'direct' | 'optimizer' | 'uniform-heuristic' | 'random-relaxations'
   | 'framvera' | 'framvera-no-coalitions' | 'framvera-no-voi' | 'framvera-no-claim-checks'
-  | 'oracle';
+  | 'oracle' | 'agent-harness';
 
 export const STRATEGIES: StrategyId[] = [
   'direct', 'optimizer', 'uniform-heuristic', 'random-relaxations',
   'framvera', 'framvera-no-coalitions', 'framvera-no-voi', 'framvera-no-claim-checks', 'oracle',
 ];
+
+/** Strategies that call a live model; never part of the default run. */
+export const MODEL_STRATEGIES: StrategyId[] = ['agent-harness'];
 
 export interface Outcome {
   claimed: boolean;

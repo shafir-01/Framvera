@@ -88,6 +88,7 @@ const LABEL: Record<StrategyId, string> = {
   'framvera-no-voi': 'Ablation: no value-of-information',
   'framvera-no-claim-checks': 'Ablation: no claim checks',
   oracle: 'Oracle (hindsight, upper bound)',
+  'agent-harness': 'Generic tool-using model baseline',
 };
 export const label = (s: StrategyId) => LABEL[s];
 
@@ -140,6 +141,10 @@ export function summaryMarkdown(records: RunRecord[], meta: Meta): string {
   L.push('- A success counts only if the final plan passes the independent verifier on the final world and intent, stays inside the budget, and respects the hidden real capacities. A claim that fails any of these is a false claim. Any claimed success in an impossible world is a false claim.');
   L.push(`- Question budget for random relaxations and the Framvera variants: ${String(meta.args.budget)}. The uniform heuristic asks every offer for a 10% discount and a 12 hour extension, so it uses as many questions as it needs.`);
   L.push('- The oracle uses the same intervention generator with knowledge of the private policies, so it is an upper bound for that candidate set, not a global optimum.');
+  const ah = meta.args.agentHarness as Record<string, number | string> | undefined;
+  if (ah) {
+    L.push(`- Generic tool-using model baseline (${String(ah.model)}): same sanitized world and intent, a task prompt, and four tools: list offers, get offer, ask a supplier one free-form question (answered only by the private policies through the referee boundary, parsed into a typed concession or not sent), and propose a plan (checked by the same independent verifier). It has the same ${String(ah.supplierQuestionBudget)}-question budget as Framvera, at most ${String(ah.maxTurnsPerEpisode)} model calls per world, and no access to the solver, infeasibility core, inverse feasibility search or value-of-information ranking. It was run on ${String(ah.worldsPerFamily)} worlds per family (${String(ah.scoredWorlds)} scored, ${String(ah.droppedForBudget)} dropped for budget) using ${String(ah.modelCalls)} of ${String(ah.callBudget)} permitted model calls, so its denominators are smaller than the other rows. A model given the same engine as a tool could match much of it; this row measures the engine's marginal value against an agent that must reason alone.`);
+  }
   L.push('- Intervals are Wilson 95% for proportions and normal 95% for mean cost ratios. Recovery is attempted only on verified plans where a withheld shock touches the plan.', '');
   for (const f of fams) {
     L.push(`## ${f[0]?.toUpperCase()}${f.slice(1)} worlds`, '');

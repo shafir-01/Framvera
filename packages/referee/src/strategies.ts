@@ -1,4 +1,5 @@
 import type { Concession, Intent, Intervention, NegotiationMessage, Plan, SolveReport, World } from '@framvera/contracts';
+import { runAgentHarness } from './harness/index.ts';
 import { createBoundary, type Boundary } from './boundary.ts';
 import { buildDirectPlan, directLooksFeasible } from './direct.ts';
 import { rng, shuffle } from './stats.ts';
@@ -228,5 +229,6 @@ export async function runStrategy(
     case 'framvera-no-voi': return framvera(ctx, { coalitions: true, voi: false, claimChecks: true });
     case 'framvera-no-claim-checks': return framvera(ctx, { coalitions: true, voi: true, claimChecks: false });
     case 'oracle': return oracle(ctx);
+    case 'agent-harness': return runAgentHarness(deps, world, intent, truth, cfg);
   }
 }

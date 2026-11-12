@@ -4,14 +4,14 @@ import { fileURLToPath } from 'node:url';
 import { headline, summaryMarkdown, type Meta } from './aggregate.ts';
 import { DEFAULTS, heldOutSeed, runBenchmark, type BenchOptions } from './benchmark.ts';
 import { loadDeps } from './deps.ts';
-import { STRATEGIES, type Family, type StrategyId } from './types.ts';
+import { MODEL_STRATEGIES, STRATEGIES, type Family, type StrategyId } from './types.ts';
 
 function parseArgs(argv: string[]): BenchOptions & { out: string } {
   const get = (k: string) => { const i = argv.indexOf(`--${k}`); return i >= 0 ? argv[i + 1] : undefined; };
   const num = (k: string, d: number) => { const v = get(k); if (v === undefined) return d; const n = Number(v); if (!Number.isFinite(n) || n < 0) throw new Error(`--${k} must be a non-negative number`); return n; };
   const fams = get('families')?.split(',') as Family[] | undefined;
   const strs = get('strategies')?.split(',') as StrategyId[] | undefined;
-  for (const s of strs ?? []) if (!STRATEGIES.includes(s)) throw new Error(`unknown strategy ${s}`);
+  for (const s of strs ?? []) if (!STRATEGIES.includes(s) && !MODEL_STRATEGIES.includes(s)) throw new Error(`unknown strategy ${s}`);
   const root = resolve(dirname(fileURLToPath(import.meta.url)), '../../..');
   return {
     seeds: num('seeds', DEFAULTS.seeds), base: num('base', DEFAULTS.base), families: fams ?? DEFAULTS.families,
