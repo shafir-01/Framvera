@@ -1,0 +1,1208 @@
+{
+  "generatedAt": "2026-11-12T14:19:29.059Z",
+  "base": "http://localhost:8823",
+  "market": "m-042de8a9-eb5",
+  "paypal": "sandbox",
+  "steps": [
+    {
+      "step": "status",
+      "command": "curl -s -X GET http://localhost:8823/api/status",
+      "status": 200,
+      "ms": 22,
+      "result": {
+        "build": {
+          "commit": "0c6af5bf364db6f808df01870678db1f695cec6e",
+          "source": "local"
+        },
+        "paypal": {
+          "env": "sandbox",
+          "configured": true,
+          "gateway": "paypal-sandbox"
+        },
+        "services": {
+          "market": true,
+          "templates": [
+            "flagship",
+            "exhibition",
+            "unseen"
+          ],
+          "solver": true,
+          "inverse": true,
+          "negotiation": true,
+          "obligations": true,
+          "paypalAdapter": true,
+          "mechanisms": true,
+          "options": true,
+          "paypalConfigured": true,
+          "paymentsGateway": "paypal-sandbox",
+          "aiConfigured": true,
+          "aiEnabled": true,
+          "aiBudgetLeft": true,
+          "durableLedger": true,
+          "webUi": true
+        }
+      }
+    },
+    {
+      "step": "create market",
+      "command": "curl -s -X POST http://localhost:8823/api/markets -H 'content-type: application/json' -d '{\"template\":\"flagship\"}'",
+      "status": 201,
+      "ms": 26,
+      "result": {
+        "market": "m-042de8a9-eb5",
+        "template": "flagship",
+        "world": "Promotional kits, Stockholm",
+        "actors": 27,
+        "offers": 27,
+        "intent": {
+          "text": "Produce and deliver 500 promotional kits to Stockholm by Friday 12:00, under 55 000 kr.",
+          "quantity": 500,
+          "budget": "55000.00 SEK",
+          "deadline": "2026-11-20T11:00:00.000Z",
+          "authority": {
+            "mayNegotiate": true,
+            "mayReserve": true,
+            "mayPreparePayments": false,
+            "maxSpend": {
+              "currency": "SEK",
+              "minor": 5500000
+            }
+          }
+        }
+      }
+    },
+    {
+      "step": "analyze",
+      "command": "curl -s -X POST http://localhost:8823/api/markets/m-042de8a9-eb5/analyze",
+      "status": 200,
+      "ms": 3303,
+      "result": {
+        "status": "infeasible",
+        "solver": {
+          "name": "HiGHS",
+          "version": "1.15 (highs-js 1.15.4, WebAssembly)",
+          "ms": 3275.7
+        },
+        "core": {
+          "summary": "No combination of the published offers is within 55 000 kr. For the full order, with the production steps in their required order, these 14 conditions cannot all hold at once. Relaxing any single one of them would make a plan possible.",
+          "minimal": true,
+          "proven": true,
+          "method": "deletion-filter",
+          "constraints": [
+            "Kista Pack & Montage can only work between Thu 19 Nov 07:00 UTC and Thu 19 Nov 15:00 UTC.",
+            "Märsta Lager & Montage can only work between Fri 20 Nov 06:00 UTC and Fri 20 Nov 14:00 UTC.",
+            "Täby Montage can only work between Thu 19 Nov 15:00 UTC and Thu 19 Nov 21:00 UTC.",
+            "Roslagens Åkeri can only work between Thu 19 Nov 06:00 UTC and Thu 19 Nov 14:00 UTC.",
+            "Uppsala Godslinjen can only work between Thu 19 Nov 05:00 UTC and Thu 19 Nov 11:00 UTC.",
+            "Norrköpings Offset only takes orders of 1000 inserts or more.",
+            "Gävle Bomullsväveri only takes orders of 1000 tote bags or more.",
+            "Huddinge Arbetscenter has room for at most 200 kits.",
+            "Snabbpack Norden has room for 50 kits: 500 claimed, 450 already booked by others.",
+            "Lindqvists Transport has room for at most 200 kits.",
+            "Mälardalens Budservice has room for at most 150 kits.",
+            "Cykelbud Söder has room for at most 90 kits.",
+            "The offer from Gävle Bomullsväveri expired Sun 15 Nov 23:00 UTC.",
+            "Total spend must stay within 55 000 kr."
+          ]
+        }
+      }
+    },
+    {
+      "step": "invent",
+      "command": "curl -s -X POST http://localhost:8823/api/markets/m-042de8a9-eb5/invent",
+      "status": 200,
+      "ms": 1407,
+      "result": {
+        "interventions": [
+          {
+            "id": "iv-c217ffc0",
+            "unlocks": true,
+            "method": "coalition",
+            "minimality": "Fewest changes (3 changed fields) among the fields suppliers marked negotiable, then the lowest estimated cost, within the planner's bounds (time shifts up to 168 hours, price cuts up to 30%), using the planner's cost estimates. Supplier acceptance is unknown until asked.",
+            "totalAfter": "51400.00 SEK",
+            "concessions": [
+              {
+                "id": "cn-2e861524",
+                "target": {
+                  "kind": "offer",
+                  "offer": "o-kista",
+                  "field": "windowEnd"
+                },
+                "from": "2026-11-19T15:00:00.000Z",
+                "to": "2026-11-19T17:00:00.000Z",
+                "rationale": "Kista Pack & Montage works until Thu 19 Nov 17:00 UTC instead of Thu 19 Nov 15:00 UTC."
+              },
+              {
+                "id": "cn-620cd2b2",
+                "target": {
+                  "kind": "offer",
+                  "offer": "o-roslagen",
+                  "field": "joint"
+                },
+                "from": "separate",
+                "to": "joint:shared:o-roslagen>o-lindqvist",
+                "rationale": "Roslagens Åkeri lends its capacity of 600 kits to a job Lindqvists Transport runs in its own window."
+              },
+              {
+                "id": "cn-875ab6bd",
+                "target": {
+                  "kind": "offer",
+                  "offer": "o-lindqvist",
+                  "field": "joint"
+                },
+                "from": "separate",
+                "to": "joint:shared:o-roslagen>o-lindqvist",
+                "rationale": "Lindqvists Transport runs the job in its window using Roslagens Åkeri's capacity of 600 kits instead of its own 200."
+              }
+            ]
+          },
+          {
+            "id": "iv-697ce6e1",
+            "unlocks": true,
+            "method": "coalition",
+            "minimality": "Next best after excluding earlier change sets: fewest changes (3 changed fields) among the remaining options, then the lowest estimated cost, within the planner's bounds (time shifts up to 168 hours, price cuts up to 30%), using the planner's cost estimates. Supplier acceptance is unknown until asked.",
+            "totalAfter": "52000.00 SEK",
+            "concessions": [
+              {
+                "id": "cn-fa7106c3",
+                "target": {
+                  "kind": "offer",
+                  "offer": "o-kista",
+                  "field": "windowEnd"
+                },
+                "from": "2026-11-19T15:00:00.000Z",
+                "to": "2026-11-19T17:01:00.000Z",
+                "rationale": "Kista Pack & Montage works until Thu 19 Nov 17:01 UTC instead of Thu 19 Nov 15:00 UTC."
+              },
+              {
+                "id": "cn-83ac1c81",
+                "target": {
+                  "kind": "offer",
+                  "offer": "o-roslagen",
+                  "field": "joint"
+                },
+                "from": "separate",
+                "to": "joint:shared:o-roslagen>o-malardalen",
+                "rationale": "Roslagens Åkeri lends its capacity of 600 kits to a job Mälardalens Budservice runs in its own window."
+              },
+              {
+                "id": "cn-756e6b73",
+                "target": {
+                  "kind": "offer",
+                  "offer": "o-malardalen",
+                  "field": "joint"
+                },
+                "from": "separate",
+                "to": "joint:shared:o-roslagen>o-malardalen",
+                "rationale": "Mälardalens Budservice runs the job in its window using Roslagens Åkeri's capacity of 600 kits instead of its own 150."
+              }
+            ]
+          }
+        ],
+        "coalitions": 3,
+        "findings": [
+          {
+            "claim": "a-snabbpack",
+            "verdict": "unverifiable",
+            "kind": "injection",
+            "text": "Description of a-snabbpack (Snabbpack Norden) contains instruction-like text \"ignore previous instructions\". It is treated as data and has no effect on ranking, negotiation or verification."
+          },
+          {
+            "claim": "o-snabbpack",
+            "verdict": "unverifiable",
+            "kind": "double-booked",
+            "text": "Offer o-snabbpack advertises 500 units, but cl-booked-o-snabbpack already commit 450 elsewhere; only 50 remain."
+          },
+          {
+            "claim": "cl-cap-o-snabbpack",
+            "verdict": "contradicted",
+            "kind": "contradicted",
+            "text": "Claim cl-cap-o-snabbpack (Can assemble 500 kits on Thursday.) is contradicted by cl-booked-o-snabbpack."
+          },
+          {
+            "claim": "cl-cap-o-soderberg",
+            "verdict": "consistent",
+            "kind": "consistent",
+            "text": "Claim cl-cap-o-soderberg behind offer o-soderberg is corroborated and not contradicted by any record."
+          },
+          {
+            "claim": "cl-cap-o-vasastan",
+            "verdict": "consistent",
+            "kind": "consistent",
+            "text": "Claim cl-cap-o-vasastan behind offer o-vasastan is corroborated and not contradicted by any record."
+          },
+          {
+            "claim": "cl-cap-o-norrkoping",
+            "verdict": "consistent",
+            "kind": "consistent",
+            "text": "Claim cl-cap-o-norrkoping behind offer o-norrkoping is corroborated and not contradicted by any record."
+          },
+          {
+            "claim": "cl-cap-o-uppsala-tryck",
+            "verdict": "consistent",
+            "kind": "consistent",
+            "text": "Claim cl-cap-o-uppsala-tryck behind offer o-uppsala-tryck is corroborated and not contradicted by any record."
+          },
+          {
+            "claim": "cl-cap-o-boras",
+            "verdict": "consistent",
+            "kind": "consistent",
+            "text": "Claim cl-cap-o-boras behind offer o-boras is corroborated and not contradicted by any record."
+          },
+          {
+            "claim": "cl-cap-o-textil-sundbyberg",
+            "verdict": "consistent",
+            "kind": "consistent",
+            "text": "Claim cl-cap-o-textil-sundbyberg behind offer o-textil-sundbyberg is corroborated and not contradicted by any record."
+          },
+          {
+            "claim": "cl-cap-o-gavle",
+            "verdict": "consistent",
+            "kind": "consistent",
+            "text": "Claim cl-cap-o-gavle behind offer o-gavle is corroborated and not contradicted by any record."
+          },
+          {
+            "claim": "cl-cap-o-gavle-autumn",
+            "verdict": "consistent",
+            "kind": "consistent",
+            "text": "Claim cl-cap-o-gavle-autumn behind offer o-gavle-autumn is corroborated and not contradicted by any record."
+          },
+          {
+            "claim": "cl-cap-o-jonkoping",
+            "verdict": "consistent",
+            "kind": "consistent",
+            "text": "Claim cl-cap-o-jonkoping behind offer o-jonkoping is corroborated and not contradicted by any record."
+          },
+          {
+            "claim": "cl-cap-o-orebro",
+            "verdict": "consistent",
+            "kind": "consistent",
+            "text": "Claim cl-cap-o-orebro behind offer o-orebro is corroborated and not contradicted by any record."
+          },
+          {
+            "claim": "cl-cap-o-kista",
+            "verdict": "consistent",
+            "kind": "consistent",
+            "text": "Claim cl-cap-o-kista behind offer o-kista is corroborated and not contradicted by any record."
+          },
+          {
+            "claim": "cl-cap-o-solna",
+            "verdict": "consistent",
+            "kind": "consistent",
+            "text": "Claim cl-cap-o-solna behind offer o-solna is corroborated and not contradicted by any record."
+          },
+          {
+            "claim": "cl-cap-o-huddinge-ac",
+            "verdict": "consistent",
+            "kind": "consistent",
+            "text": "Claim cl-cap-o-huddinge-ac behind offer o-huddinge-ac is corroborated and not contradicted by any record."
+          },
+          {
+            "claim": "cl-cap-o-marsta",
+            "verdict": "consistent",
+            "kind": "consistent",
+            "text": "Claim cl-cap-o-marsta behind offer o-marsta is corroborated and not contradicted by any record."
+          },
+          {
+            "claim": "cl-cap-o-taby",
+            "verdict": "consistent",
+            "kind": "consistent",
+            "text": "Claim cl-cap-o-taby behind offer o-taby is corroborated and not contradicted by any record."
+          },
+          {
+            "claim": "cl-cap-o-nacka",
+            "verdict": "consistent",
+            "kind": "consistent",
+            "text": "Claim cl-cap-o-nacka behind offer o-nacka is corroborated and not contradicted by any record."
+          },
+          {
+            "claim": "cl-cap-o-flemingsberg",
+            "verdict": "consistent",
+            "kind": "consistent",
+            "text": "Claim cl-cap-o-flemingsberg behind offer o-flemingsberg is corroborated and not contradicted by any record."
+          },
+          {
+            "claim": "cl-cap-o-sodertalje-pack",
+            "verdict": "consistent",
+            "kind": "consistent",
+            "text": "Claim cl-cap-o-sodertalje-pack behind offer o-sodertalje-pack is corroborated and not contradicted by any record."
+          },
+          {
+            "claim": "cl-cap-o-arlanda",
+            "verdict": "consistent",
+            "kind": "consistent",
+            "text": "Claim cl-cap-o-arlanda behind offer o-arlanda is corroborated and not contradicted by any record."
+          },
+          {
+            "claim": "cl-cap-o-haninge-kartong",
+            "verdict": "consistent",
+            "kind": "consistent",
+            "text": "Claim cl-cap-o-haninge-kartong behind offer o-haninge-kartong is corroborated and not contradicted by any record."
+          },
+          {
+            "claim": "cl-cap-o-roslagen",
+            "verdict": "consistent",
+            "kind": "consistent",
+            "text": "Claim cl-cap-o-roslagen behind offer o-roslagen is corroborated and not contradicted by any record."
+          },
+          {
+            "claim": "cl-cap-o-lindqvist",
+            "verdict": "consistent",
+            "kind": "consistent",
+            "text": "Claim cl-cap-o-lindqvist behind offer o-lindqvist is corroborated and not contradicted by any record."
+          },
+          {
+            "claim": "cl-cap-o-malardalen",
+            "verdict": "consistent",
+            "kind": "consistent",
+            "text": "Claim cl-cap-o-malardalen behind offer o-malardalen is corroborated and not contradicted by any record."
+          },
+          {
+            "claim": "cl-cap-o-cykelbud",
+            "verdict": "consistent",
+            "kind": "consistent",
+            "text": "Claim cl-cap-o-cykelbud behind offer o-cykelbud is corroborated and not contradicted by any record."
+          },
+          {
+            "claim": "cl-cap-o-express",
+            "verdict": "consistent",
+            "kind": "consistent",
+            "text": "Claim cl-cap-o-express behind offer o-express is corroborated and not contradicted by any record."
+          },
+          {
+            "claim": "cl-cap-o-uppsala-gods",
+            "verdict": "consistent",
+            "kind": "consistent",
+            "text": "Claim cl-cap-o-uppsala-gods behind offer o-uppsala-gods is corroborated and not contradicted by any record."
+          }
+        ]
+      }
+    },
+    {
+      "step": "negotiate",
+      "command": "curl -s -X POST http://localhost:8823/api/markets/m-042de8a9-eb5/negotiate",
+      "status": 200,
+      "ms": 15328,
+      "result": {
+        "outcome": "feasible",
+        "queriesUsed": 3,
+        "queryBudget": 6,
+        "messages": [
+          {
+            "id": "neg-world-flagship-v1-intent-flagship:m1",
+            "type": "Propose",
+            "from": "buyer",
+            "to": "a-kista"
+          },
+          {
+            "id": "neg-world-flagship-v1-intent-flagship:m4",
+            "type": "CounterOffer",
+            "from": "a-kista",
+            "to": "buyer"
+          },
+          {
+            "id": "neg-world-flagship-v1-intent-flagship:m5",
+            "type": "Accept",
+            "from": "buyer",
+            "to": "a-kista",
+            "termsHash": "986a5a0b02d68f85cc6c25c6cf52476c88c33591ff9601199c066d7aa7d70aa7"
+          },
+          {
+            "id": "neg-world-flagship-v1-intent-flagship:m2",
+            "type": "Propose",
+            "from": "buyer",
+            "to": "a-lindqvist"
+          },
+          {
+            "id": "neg-world-flagship-v1-intent-flagship:m6",
+            "type": "Accept",
+            "from": "a-lindqvist",
+            "to": "buyer",
+            "termsHash": "72ddc29031cbae7c55072c7705a40b9e845b4db4ee5481ea330b5a11bea25db6"
+          },
+          {
+            "id": "neg-world-flagship-v1-intent-flagship:m3",
+            "type": "Propose",
+            "from": "buyer",
+            "to": "a-roslagen"
+          },
+          {
+            "id": "neg-world-flagship-v1-intent-flagship:m7",
+            "type": "Accept",
+            "from": "a-roslagen",
+            "to": "buyer",
+            "termsHash": "9791fe42da861e725fb5f768e95e12cae4de56914ef1ddb9d26585b166ffd0cf"
+          }
+        ],
+        "decisions": [
+          {
+            "message": "neg-world-flagship-v1-intent-flagship:m1",
+            "accept": false,
+            "basis": "synthetic-policy",
+            "reason": "Can do this with paid overtime; countering with the overtime charge.",
+            "counter": {
+              "to": 220000
+            }
+          },
+          {
+            "message": "neg-world-flagship-v1-intent-flagship:m2",
+            "accept": true,
+            "basis": "synthetic-policy",
+            "reason": "Willing to take part in the joint order at the proposed share."
+          },
+          {
+            "message": "neg-world-flagship-v1-intent-flagship:m3",
+            "accept": true,
+            "basis": "synthetic-policy",
+            "reason": "Willing to take part in the joint order at the proposed share."
+          }
+        ],
+        "accepted": [
+          {
+            "id": "cn-2e861524",
+            "target": {
+              "kind": "offer",
+              "offer": "o-kista",
+              "field": "windowEnd"
+            },
+            "from": "2026-11-19T15:00:00.000Z",
+            "to": "2026-11-19T17:00:00.000Z"
+          },
+          {
+            "id": "cn-2e861524:charge",
+            "target": {
+              "kind": "offer",
+              "offer": "o-kista",
+              "field": "setupFee"
+            },
+            "from": 100000,
+            "to": 220000
+          },
+          {
+            "id": "cn-875ab6bd",
+            "target": {
+              "kind": "offer",
+              "offer": "o-lindqvist",
+              "field": "joint"
+            },
+            "from": "separate",
+            "to": "joint:shared:o-roslagen>o-lindqvist"
+          },
+          {
+            "id": "cn-620cd2b2",
+            "target": {
+              "kind": "offer",
+              "offer": "o-roslagen",
+              "field": "joint"
+            },
+            "from": "separate",
+            "to": "joint:shared:o-roslagen>o-lindqvist"
+          }
+        ],
+        "unlockedBy": [
+          "cn-2e861524",
+          "cn-2e861524:charge",
+          "cn-875ab6bd",
+          "cn-620cd2b2"
+        ],
+        "planId": "plan-1d100d7e",
+        "total": "52600.00 SEK",
+        "verification": true
+      }
+    },
+    {
+      "step": "verify",
+      "command": "curl -s -X POST http://localhost:8823/api/plans/plan-1d100d7e/verify -H 'content-type: application/json' -d '{\"market\":\"m-042de8a9-eb5\"}'",
+      "status": 200,
+      "ms": 27,
+      "result": {
+        "ok": true,
+        "checks": [
+          "ok identity: Plan matches this world version and request.",
+          "ok offers: Every allocation uses an existing, active offer.",
+          "ok exclusive: No capacity is promised twice.",
+          "ok validity: Every offer is still valid.",
+          "ok demand: Every stage produces enough.",
+          "ok capacity: No supplier is asked for more than its capacity.",
+          "ok min-qty: Every order meets its supplier’s minimum.",
+          "ok window: All work happens inside each supplier’s window.",
+          "ok duration: Every supplier has enough hours for its quantity.",
+          "ok precedence: Each stage starts after the stages it depends on.",
+          "ok deadline: Everything is ready by the deadline.",
+          "ok money: Every amount matches published prices and the total adds up exactly.",
+          "ok budget: Total spend is within budget and spending authority."
+        ]
+      }
+    },
+    {
+      "step": "commit",
+      "command": "curl -s -X POST http://localhost:8823/api/agreements/plan-1d100d7e/commit -H 'content-type: application/json' -d '{\"market\":\"m-042de8a9-eb5\"}'",
+      "status": 201,
+      "ms": 22,
+      "result": {
+        "id": "agr:plan-1d100d7e",
+        "state": "COMMITTED",
+        "version": 1,
+        "termsHash": "136343e02dc8d3ebc390c45905ac0115cddd84da6abc13c647277a7f590586d0",
+        "acceptances": [
+          {
+            "actor": "buyer",
+            "basis": "buyer",
+            "signs": true
+          },
+          {
+            "actor": "a-soderberg",
+            "basis": "synthetic-policy",
+            "signs": true
+          },
+          {
+            "actor": "a-boras",
+            "basis": "synthetic-policy",
+            "signs": true
+          },
+          {
+            "actor": "a-kista",
+            "basis": "synthetic-policy",
+            "signs": true
+          },
+          {
+            "actor": "a-nacka",
+            "basis": "synthetic-policy",
+            "signs": true
+          },
+          {
+            "actor": "a-lindqvist",
+            "basis": "synthetic-policy",
+            "signs": true
+          }
+        ],
+        "obligations": [
+          {
+            "id": "obl:plan-1d100d7e:0",
+            "actor": "a-soderberg",
+            "offer": "o-soderberg",
+            "qty": 500,
+            "start": "2026-11-17T07:00:00.000Z",
+            "due": "2026-11-17T15:30:00.000Z",
+            "amount": "5400.00 SEK",
+            "state": "ACTIVE"
+          },
+          {
+            "id": "obl:plan-1d100d7e:1",
+            "actor": "a-boras",
+            "offer": "o-boras",
+            "qty": 500,
+            "start": "2026-11-17T07:00:00.000Z",
+            "due": "2026-11-18T15:20:00.001Z",
+            "amount": "19000.00 SEK",
+            "state": "ACTIVE"
+          },
+          {
+            "id": "obl:plan-1d100d7e:2",
+            "actor": "a-kista",
+            "offer": "o-kista",
+            "qty": 500,
+            "start": "2026-11-19T07:00:00.000Z",
+            "due": "2026-11-19T18:00:00.000Z",
+            "amount": "10700.00 SEK",
+            "state": "ACTIVE"
+          },
+          {
+            "id": "obl:plan-1d100d7e:3",
+            "actor": "a-nacka",
+            "offer": "o-nacka",
+            "qty": 500,
+            "start": "2026-11-19T18:00:00.000Z",
+            "due": "2026-11-19T23:00:00.000Z",
+            "amount": "10800.00 SEK",
+            "state": "ACTIVE"
+          },
+          {
+            "id": "obl:plan-1d100d7e:4",
+            "actor": "a-lindqvist",
+            "offer": "joint:shared:o-roslagen>o-lindqvist",
+            "qty": 500,
+            "start": "2026-11-20T04:00:00.000Z",
+            "due": "2026-11-20T07:00:00.000Z",
+            "amount": "6700.00 SEK",
+            "state": "ACTIVE"
+          }
+        ]
+      }
+    },
+    {
+      "step": "options discover",
+      "command": "curl -s -X POST http://localhost:8823/api/markets/m-042de8a9-eb5/options/discover",
+      "status": 200,
+      "ms": 22,
+      "result": {
+        "risks": [
+          {
+            "obligation": "obl:plan-1d100d7e:0",
+            "pFail": 0.12700000000000009,
+            "label": "planner-estimate"
+          },
+          {
+            "obligation": "obl:plan-1d100d7e:1",
+            "pFail": 0.12700000000000009,
+            "label": "planner-estimate"
+          },
+          {
+            "obligation": "obl:plan-1d100d7e:2",
+            "pFail": 0.12700000000000009,
+            "label": "planner-estimate"
+          },
+          {
+            "obligation": "obl:plan-1d100d7e:3",
+            "pFail": 0.12700000000000009,
+            "label": "planner-estimate"
+          },
+          {
+            "obligation": "obl:plan-1d100d7e:4",
+            "pFail": 0.1531900000000001,
+            "label": "planner-estimate"
+          }
+        ],
+        "options": [
+          {
+            "id": "opt:obl:plan-1d100d7e:1:o-orebro",
+            "status": "quoted",
+            "supplier": "a-orebro",
+            "offer": "o-orebro",
+            "covers": [
+              "obl:plan-1d100d7e:1"
+            ],
+            "qty": 500,
+            "fee": "997.50 SEK",
+            "strikeUnit": "39.90 SEK",
+            "basis": "synthetic-policy",
+            "check": true
+          }
+        ],
+        "declined": [
+          {
+            "actor": "a-express",
+            "reason": "Independent check failed: Total 59 700 kr exceeds the spending authority of 55 000 kr."
+          },
+          {
+            "actor": "a-textil-sundbyberg",
+            "reason": "Independent check failed: Total 55 725 kr exceeds the spending authority of 55 000 kr."
+          }
+        ]
+      }
+    },
+    {
+      "step": "options value",
+      "command": "curl -s -X POST http://localhost:8823/api/markets/m-042de8a9-eb5/options/value -H 'content-type: application/json' -d '{\"scenarios\":500}'",
+      "status": 200,
+      "ms": 1849,
+      "result": {
+        "label": "planner-estimate",
+        "scenarios": 500,
+        "buy": [
+          "opt:obl:plan-1d100d7e:1:o-orebro"
+        ],
+        "fees": "997.50 SEK",
+        "baselineExpectedLoss": "17936.80 SEK",
+        "withOptionsExpectedLoss": "15603.20 SEK",
+        "options": [
+          {
+            "option": "opt:obl:plan-1d100d7e:1:o-orebro",
+            "fee": "997.50 SEK",
+            "avoided": "2333.60 SEK",
+            "buy": true,
+            "reason": "Expected loss avoided 2 333,60 kr exceeds the 997,50 kr fee."
+          }
+        ]
+      }
+    },
+    {
+      "step": "options buy",
+      "command": "curl -s -X POST http://localhost:8823/api/markets/m-042de8a9-eb5/options/buy -H 'content-type: application/json' -d '{}'",
+      "status": 200,
+      "ms": 25,
+      "result": {
+        "purchased": [
+          "opt:obl:plan-1d100d7e:1:o-orebro"
+        ]
+      }
+    },
+    {
+      "step": "grant payment scope",
+      "command": "curl -s -X POST http://localhost:8823/api/markets/m-042de8a9-eb5/authority -H 'content-type: application/json' -d '{\"mayPreparePayments\":true}'",
+      "status": 200,
+      "ms": 38,
+      "result": {
+        "authority": {
+          "mayNegotiate": true,
+          "mayReserve": true,
+          "mayPreparePayments": true,
+          "maxSpend": {
+            "currency": "SEK",
+            "minor": 5500000
+          }
+        }
+      }
+    },
+    {
+      "step": "buyer approves payment",
+      "command": "curl -s -X POST http://localhost:8823/api/agreements/agr:plan-1d100d7e/approve-payment -H 'content-type: application/json' -d '{\"market\":\"m-042de8a9-eb5\",\"payee\":\"a-soderberg\",\"termsHash\":\"136343e02dc8d3ebc390c45905ac0115cddd84da6abc13c647277a7f590586d0\",\"amount\":{\"currency\":\"SEK\",\"minor\":540000}}'",
+      "status": 200,
+      "ms": 42,
+      "result": {
+        "payee": "a-soderberg",
+        "amount": "5400.00 SEK",
+        "obligations": [
+          "obl:plan-1d100d7e:0"
+        ],
+        "expiresAt": "2026-11-12T14:33:55.555Z",
+        "approvalToken": "[redacted]"
+      }
+    },
+    {
+      "step": "order without approval (refused)",
+      "command": "curl -s -X POST http://localhost:8823/api/payments/orders -H 'content-type: application/json' -d '{\"market\":\"m-042de8a9-eb5\",\"agreementId\":\"agr:plan-1d100d7e\"}'",
+      "status": 403,
+      "ms": 40,
+      "result": {
+        "error": {
+          "code": "approval_required",
+          "message": "A buyer approval is required before any payment is created"
+        }
+      }
+    },
+    {
+      "step": "create PayPal order",
+      "command": "curl -s -X POST http://localhost:8823/api/payments/orders -H 'content-type: application/json' -d '{\"approvalToken\":\"[redacted]\",\"market\":\"m-042de8a9-eb5\"}'",
+      "status": 201,
+      "ms": 1317,
+      "result": {
+        "id": "pay-2789b890-a74",
+        "state": "PAYER_ACTION_REQUIRED",
+        "payee": "a-soderberg",
+        "amount": "5400.00 SEK",
+        "obligations": [
+          "obl:plan-1d100d7e:0"
+        ],
+        "operationKey": "1bb2a43a22e8e953c0663def6a1dc01a",
+        "paypal": {
+          "env": "sandbox",
+          "orderId": "7F605332V3944731X",
+          "status": "PAYER_ACTION_REQUIRED",
+          "orderStatus": "PAYER_ACTION_REQUIRED",
+          "captured": null,
+          "debugIds": [
+            "f63853674997d"
+          ],
+          "approveHost": "www.sandbox.paypal.com"
+        }
+      }
+    },
+    {
+      "step": "capture before buyer approval (refused)",
+      "command": "curl -s -X POST http://localhost:8823/api/payments/pay-2789b890-a74/capture",
+      "status": 409,
+      "ms": 694,
+      "result": {
+        "error": {
+          "code": "not_approved",
+          "message": "The buyer has not approved this order on PayPal yet"
+        }
+      }
+    },
+    {
+      "step": "sandbox test buyer approves on PayPal checkout (test harness, headless browser)",
+      "status": "completed",
+      "ms": 17071,
+      "result": {
+        "steps": [
+          "checkout-opened",
+          "email-entered",
+          "next",
+          "logged-in",
+          "pay-clicked",
+          "left-paypal"
+        ],
+        "finalHost": "localhost"
+      }
+    },
+    {
+      "step": "independent fetch after approval",
+      "command": "curl -s -X GET http://localhost:8823/api/payments/pay-2789b890-a74",
+      "status": 200,
+      "ms": 458,
+      "result": {
+        "id": "pay-2789b890-a74",
+        "state": "APPROVED",
+        "payee": "a-soderberg",
+        "amount": "5400.00 SEK",
+        "obligations": [
+          "obl:plan-1d100d7e:0"
+        ],
+        "operationKey": "1bb2a43a22e8e953c0663def6a1dc01a",
+        "paypal": {
+          "env": "sandbox",
+          "orderId": "7F605332V3944731X",
+          "status": "APPROVED",
+          "orderStatus": "APPROVED",
+          "captured": null,
+          "lastFetchedAt": "2026-11-12T14:19:15.415Z",
+          "debugIds": [
+            "f63853674997d",
+            "f5227417a03da",
+            "f666995dc565a"
+          ],
+          "approveHost": "www.sandbox.paypal.com"
+        }
+      }
+    },
+    {
+      "step": "capture",
+      "command": "curl -s -X POST http://localhost:8823/api/payments/pay-2789b890-a74/capture",
+      "status": 200,
+      "ms": 1524,
+      "result": {
+        "id": "pay-2789b890-a74",
+        "state": "CAPTURE_COMPLETED",
+        "payee": "a-soderberg",
+        "amount": "5400.00 SEK",
+        "obligations": [
+          "obl:plan-1d100d7e:0"
+        ],
+        "operationKey": "1bb2a43a22e8e953c0663def6a1dc01a",
+        "paypal": {
+          "env": "sandbox",
+          "orderId": "7F605332V3944731X",
+          "status": "COMPLETED",
+          "orderStatus": "COMPLETED",
+          "captureId": "04D423425Y938210H",
+          "captureStatus": "COMPLETED",
+          "captured": "5400.00 SEK",
+          "lastFetchedAt": "2026-11-12T14:19:15.415Z",
+          "debugIds": [
+            "f63853674997d",
+            "f5227417a03da",
+            "f666995dc565a",
+            "f666995d822fc"
+          ],
+          "approveHost": "www.sandbox.paypal.com"
+        }
+      }
+    },
+    {
+      "step": "independent fetch after capture",
+      "command": "curl -s -X GET http://localhost:8823/api/payments/pay-2789b890-a74",
+      "status": 200,
+      "ms": 944,
+      "result": {
+        "id": "pay-2789b890-a74",
+        "state": "CAPTURE_COMPLETED",
+        "payee": "a-soderberg",
+        "amount": "5400.00 SEK",
+        "obligations": [
+          "obl:plan-1d100d7e:0"
+        ],
+        "operationKey": "1bb2a43a22e8e953c0663def6a1dc01a",
+        "paypal": {
+          "env": "sandbox",
+          "orderId": "7F605332V3944731X",
+          "status": "COMPLETED",
+          "orderStatus": "COMPLETED",
+          "captureId": "04D423425Y938210H",
+          "captureStatus": "COMPLETED",
+          "captured": "5400.00 SEK",
+          "lastFetchedAt": "2026-11-12T14:19:17.884Z",
+          "debugIds": [
+            "f63853674997d",
+            "f5227417a03da",
+            "f666995dc565a",
+            "f666995d822fc",
+            "f28968803248b"
+          ],
+          "approveHost": "www.sandbox.paypal.com"
+        }
+      }
+    },
+    {
+      "step": "disrupt",
+      "command": "curl -s -X POST http://localhost:8823/api/markets/m-042de8a9-eb5/disrupt -H 'content-type: application/json' -d '{\"kind\":\"withdraw\",\"actor\":\"a-lindqvist\",\"offer\":\"joint:shared:o-roslagen>o-lindqvist\",\"detail\":\"Lindqvists Transport loses its Friday driver and withdraws from the shared van route.\",\"at\":\"2026-11-18T12:00:00.000Z\"}'",
+      "status": 200,
+      "ms": 21,
+      "result": {
+        "disruption": {
+          "id": "d-f35ea973",
+          "kind": "withdraw",
+          "actor": "a-lindqvist",
+          "offer": "joint:shared:o-roslagen>o-lindqvist",
+          "detail": "Lindqvists Transport loses its Friday driver and withdraws from the shared van route.",
+          "at": "2026-11-18T12:00:00.000Z"
+        },
+        "affected": [
+          "obl:plan-1d100d7e:4"
+        ],
+        "atRisk": [],
+        "endangeredPayments": []
+      }
+    },
+    {
+      "step": "exercise standby option",
+      "command": "curl -s -X POST http://localhost:8823/api/markets/m-042de8a9-eb5/options/exercise",
+      "status": 200,
+      "ms": 19,
+      "result": {
+        "exercised": false,
+        "absorbed": false,
+        "reason": "No purchased option keeps every other obligation and the deadline; run the full recovery.",
+        "attempts": [],
+        "amendment": null
+      }
+    },
+    {
+      "step": "recover",
+      "command": "curl -s -X POST http://localhost:8823/api/markets/m-042de8a9-eb5/recover",
+      "status": 200,
+      "ms": 11093,
+      "result": {
+        "feasible": false,
+        "kept": [
+          "obl:plan-1d100d7e:0",
+          "obl:plan-1d100d7e:1",
+          "obl:plan-1d100d7e:2",
+          "obl:plan-1d100d7e:3"
+        ],
+        "amended": [],
+        "cancelled": [],
+        "added": [],
+        "extraCost": "0.00 SEK",
+        "slipHours": 0,
+        "objective": "Lexicographic: fewest changed obligations, then least extra cost, then least slip.",
+        "rejected": [
+          {
+            "description": "Keep the original plan unchanged",
+            "reason": "Relies on Lindqvists Transport, which can no longer deliver. Uses Lindqvists Transport, whose offer is no longer available. Offer joint:shared:o-roslagen>o-lindqvist does not exist.",
+            "extraCost": "0.00 SEK",
+            "slipHours": 0
+          },
+          {
+            "description": "Replace with Stockholm Expressfrakt 500",
+            "reason": "Costs 5940000, above the budget of 5500000. Total 59 400 kr exceeds the budget of 55 000 kr. Total 59 400 kr exceeds the spending authority of 55 000 kr.",
+            "extraCost": "6800.00 SEK",
+            "slipHours": 0
+          }
+        ],
+        "core": {
+          "summary": "No combination of the published offers is within 55 000 kr while keeping the accepted commitments. For the full order, with the production steps in their required order, these 6 conditions cannot all hold at once. Relaxing any single one of them would make a plan possible.",
+          "constraints": [
+            "Roslagens Åkeri can only work between Thu 19 Nov 06:00 UTC and Thu 19 Nov 14:00 UTC.",
+            "Uppsala Godslinjen can only work between Thu 19 Nov 05:00 UTC and Thu 19 Nov 11:00 UTC.",
+            "Lindqvists Transport has room for at most 200 kits.",
+            "Mälardalens Budservice has room for at most 150 kits.",
+            "Cykelbud Söder has room for at most 90 kits.",
+            "Total spend must stay within 55 000 kr."
+          ]
+        },
+        "negotiated": {
+          "outcome": "feasible",
+          "accepted": [
+            {
+              "id": "cn-875ab6bd",
+              "target": {
+                "kind": "offer",
+                "offer": "o-lindqvist",
+                "field": "joint"
+              },
+              "from": "separate",
+              "to": "joint:shared:o-roslagen>o-lindqvist",
+              "estimate": {
+                "currency": "SEK",
+                "minor": 45000
+              },
+              "rationale": "Lindqvists Transport runs the job in its window using Roslagens Åkeri's capacity of 600 kits instead of its own 200."
+            },
+            {
+              "id": "cn-620cd2b2",
+              "target": {
+                "kind": "offer",
+                "offer": "o-roslagen",
+                "field": "joint"
+              },
+              "from": "separate",
+              "to": "joint:shared:o-roslagen>o-lindqvist",
+              "estimate": {
+                "currency": "SEK",
+                "minor": 60000
+              },
+              "rationale": "Roslagens Åkeri lends its capacity of 600 kits to a job Lindqvists Transport runs in its own window."
+            }
+          ],
+          "messages": 4,
+          "feasibleAfter": false
+        }
+      }
+    },
+    {
+      "step": "events",
+      "command": "curl -s -X GET http://localhost:8823/api/markets/m-042de8a9-eb5/events?format=json",
+      "status": 200,
+      "ms": 20,
+      "result": {
+        "total": 46,
+        "byType": {
+          "world.created": 1,
+          "solve.completed": 3,
+          "intervention.found": 2,
+          "claim.challenged": 1,
+          "negotiation.message": 21,
+          "negotiation.decision": 5,
+          "agreement.state": 2,
+          "obligation.state": 5,
+          "intent.compiled": 1,
+          "payment.state": 3,
+          "disruption.applied": 1,
+          "recovery.proposed": 1
+        },
+        "withCauses": 45,
+        "sources": [
+          "synthetic-market",
+          "solver",
+          "buyer",
+          "paypal-sandbox"
+        ]
+      }
+    },
+    {
+      "step": "trace payment",
+      "command": "curl -s -X GET http://localhost:8823/api/markets/m-042de8a9-eb5/trace/pay-2789b890-a74",
+      "status": 200,
+      "ms": 17,
+      "result": [
+        {
+          "seq": 1,
+          "type": "world.created",
+          "source": "synthetic-market",
+          "causes": 0,
+          "what": ""
+        },
+        {
+          "seq": 2,
+          "type": "solve.completed",
+          "source": "solver",
+          "causes": 1,
+          "what": "infeasible"
+        },
+        {
+          "seq": 3,
+          "type": "intervention.found",
+          "source": "solver",
+          "causes": 1,
+          "what": ""
+        },
+        {
+          "seq": 4,
+          "type": "intervention.found",
+          "source": "solver",
+          "causes": 1,
+          "what": ""
+        },
+        {
+          "seq": 6,
+          "type": "negotiation.message",
+          "source": "solver",
+          "causes": 2,
+          "what": "Propose"
+        },
+        {
+          "seq": 7,
+          "type": "negotiation.message",
+          "source": "synthetic-market",
+          "causes": 1,
+          "what": "CounterOffer"
+        },
+        {
+          "seq": 8,
+          "type": "negotiation.message",
+          "source": "synthetic-market",
+          "causes": 1,
+          "what": "Accept"
+        },
+        {
+          "seq": 9,
+          "type": "negotiation.message",
+          "source": "solver",
+          "causes": 1,
+          "what": "Propose"
+        },
+        {
+          "seq": 10,
+          "type": "negotiation.message",
+          "source": "synthetic-market",
+          "causes": 1,
+          "what": "Accept"
+        },
+        {
+          "seq": 11,
+          "type": "negotiation.message",
+          "source": "solver",
+          "causes": 2,
+          "what": "Propose"
+        },
+        {
+          "seq": 12,
+          "type": "negotiation.message",
+          "source": "synthetic-market",
+          "causes": 1,
+          "what": "Accept"
+        },
+        {
+          "seq": 16,
+          "type": "solve.completed",
+          "source": "solver",
+          "causes": 3,
+          "what": "optimal"
+        },
+        {
+          "seq": 17,
+          "type": "solve.completed",
+          "source": "solver",
+          "causes": 1,
+          "what": ""
+        },
+        {
+          "seq": 24,
+          "type": "agreement.state",
+          "source": "solver",
+          "causes": 2,
+          "what": "COMMITTED"
+        },
+        {
+          "seq": 25,
+          "type": "obligation.state",
+          "source": "solver",
+          "causes": 1,
+          "what": "ACTIVE"
+        },
+        {
+          "seq": 36,
+          "type": "payment.state",
+          "source": "paypal-sandbox",
+          "causes": 2,
+          "what": "PAYER_ACTION_REQUIRED"
+        },
+        {
+          "seq": 37,
+          "type": "payment.state",
+          "source": "paypal-sandbox",
+          "causes": 1,
+          "what": "APPROVED"
+        },
+        {
+          "seq": 38,
+          "type": "payment.state",
+          "source": "paypal-sandbox",
+          "causes": 1,
+          "what": "CAPTURE_COMPLETED"
+        }
+      ]
+    }
+  ]
+}

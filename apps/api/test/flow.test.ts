@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { makeApp, post, realEngineReady, stubEngine, TestGateway } from './helpers.ts';
+import { makeApp, post, stubEngine, TestGateway } from './helpers.ts';
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
 async function flow(app: ReturnType<typeof makeApp>) {
@@ -194,20 +194,65 @@ describe('platform guards', () => {
   });
 });
 
-describe('flagship with the real modules', async () => {
-  const { engine, ok } = await realEngineReady();
-  it.skipIf(!ok)('runs end to end with FakeGateway', async () => {
-    const gw = new (engine as any).FakeGateway();
-    const app = makeApp(engine, gw);
-    const { m, an, neg, ver, agreement } = await flow(app);
-    expect(an.status).toBe('infeasible');
-    expect(ver.ok).toBe(true);
-    expect(agreement.state).toBeTruthy();
-    const payee = agreement.obligations[0].actor;
-    const amount = agreement.obligations.filter((o: any) => o.actor === payee).reduce((a: number, o: any) => a + o.amount.minor, 0);
-    const ap: any = await (await post(app, `/api/agreements/${agreement.id}/approve-payment`, { market: m.id, payee, termsHash: agreement.termsHash, amount: { currency: agreement.obligations[0].amount.currency, minor: amount } })).json();
-    const order = await post(app, '/api/payments/orders', { approvalToken: ap.approvalToken, market: m.id });
-    expect(order.status).toBe(201);
-    expect(neg.planId).toBeTruthy();
+describe('integration surface', () => {
+  it('maps templates to the market generators and returns id and market', async () => {
+    const seen: any[] = [];
+    const e = stubEngine();
+    e.createMarket = (spec) => {
+      seen.push(spec);
+      return e.flagshipWorld!();
+    };
+    const app = makeApp(e);
+    for (const t of ['flagship', 'exhibition', 'circular']) {
+      const r: any = await (await post(app, '/api/markets', { template: t })).json();
+      expect(r.market).toBe(r.id);
+      expect(r.template).toBe(t);
+    }
+    const u: any = await (await post(app, '/api/markets', { template: 'unseen', seed: 42, family: 'impossible' })).json();
+    expect(u.seed).toBe(42);
+    expect(seen.at(-1)).toEqual({ template: 'unseen', seed: 42, family: 'impossible' });
+    expect(seen.slice(0, 3).map((x) => x.template)).toEqual(['flagship', 'exhibition', 'circular']);
+    expect((await post(app, '/api/markets', { template: 'nope' })).status).toBe(400);
+  });
+
+  it('reports the build commit and keeps secrets out of status', async () => {
+    const s: any = await (await makeApp(stubEngine()).request('/api/status')).json();
+    expect(s.build).toHaveProperty('commit');
+    expect(['render', 'local', 'unknown']).toContain(s.build.source);
+    const { buildInfo } = await import('../src/app.ts');
+    expect(buildInfo({ RENDER_GIT_COMMIT: 'abc123' })).toEqual({ commit: 'abc123', source: 'render' });
+  });
+
+  it('lets the buyer grant scopes but never a limit above the budget', async () => {
+    const app = makeApp(stubEngine());
+    const m: any = await (await post(app, '/api/markets', {})).json();
+    const over = await post(app, `/api/markets/${m.id}/authority`, { maxSpend: { currency: 'SEK', minor: 99_000_000 } });
+    expect(over.status).toBe(422);
+    const ok: any = await (await post(app, `/api/markets/${m.id}/authority`, { mayPreparePayments: false, maxSpend: { currency: 'SEK', minor: 1_000_000 } })).json();
+    expect(ok.authority).toMatchObject({ mayPreparePayments: false, maxSpend: { minor: 1_000_000 } });
+  });
+
+  it('links every event after market creation to what caused it', async () => {
+    const app = makeApp(stubEngine());
+    const m: any = await (await post(app, '/api/markets', {})).json();
+    await post(app, `/api/markets/${m.id}/analyze`);
+    await post(app, `/api/markets/${m.id}/invent`);
+    const neg: any = await (await post(app, `/api/markets/${m.id}/negotiate`)).json();
+    await post(app, `/api/plans/${neg.planId}/verify`, { market: m.id });
+    await post(app, `/api/agreements/${neg.planId}/commit`, { market: m.id });
+    await post(app, `/api/markets/${m.id}/disrupt`, { kind: 'withdraw', actor: 'a1' });
+    await post(app, `/api/markets/${m.id}/recover`, {});
+    const { events }: any = await (await app.request(`/api/markets/${m.id}/events?format=json`)).json();
+    const missing = events.filter((e: any) => e.type !== 'world.created' && !e.causes.length).map((e: any) => e.type);
+    expect(missing).toEqual([]);
+    const rec = events.find((e: any) => e.type === 'recovery.proposed');
+    expect(events.find((e: any) => e.id === rec.causes[0]).type).toBe('disruption.applied');
+  });
+
+  it('answers 501 for mechanisms and options when those modules are absent', async () => {
+    const app = makeApp(stubEngine());
+    const m: any = await (await post(app, '/api/markets', {})).json();
+    expect((await post(app, `/api/markets/${m.id}/mechanisms/auction`)).status).toBe(501);
+    expect((await post(app, `/api/markets/${m.id}/mechanisms/compare`)).status).toBe(501);
   });
 });

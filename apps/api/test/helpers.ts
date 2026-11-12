@@ -72,7 +72,7 @@ export class TestGateway {
 
 export async function realEngineReady() {
   const e = await loadEngine();
-  const ok = ['flagshipWorld', 'solve', 'findInterventions', 'negotiate', 'verifyPlan', 'commit', 'disrupt', 'recover', 'FakeGateway'].every((k) => typeof (e as any)[k] === 'function');
+  const ok = ['createMarket', 'solve', 'findInterventions', 'negotiate', 'verifyPlan', 'commit', 'sign', 'disrupt', 'recover', 'FakeGateway'].every((k) => typeof (e as any)[k] === 'function');
   return { engine: e, ok };
 }
 

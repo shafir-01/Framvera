@@ -1,15 +1,20 @@
 import { createHash, randomUUID } from 'node:crypto';
+import { existsSync, readFileSync } from 'node:fs';
+import { dirname, join, resolve } from 'node:path';
 import { Hono, type Context } from 'hono';
 import { cors } from 'hono/cors';
 import { bodyLimit } from 'hono/body-limit';
 import { streamSSE } from 'hono/streaming';
-import type { Agreement, Disruption, Money, PayPalRecord, PaymentIntent, PaymentState, Plan } from '@framvera/contracts';
-import { availability, need, Unavailable, type Engine } from './engine.ts';
+import type { Agreement, Concession, Disruption, Money, PayPalRecord, PaymentIntent, PaymentState, Plan } from '@framvera/contracts';
+import { availability, need, Unavailable, type Bundle, type Engine, type Template } from './engine.ts';
 import { loadConfig, type Config } from './config.ts';
 import { Store, type Session } from './store.ts';
 import { AiBudget, Approvals, RateLimiter } from './security.ts';
 import { staticHandler } from './static.ts';
 import { register as registerSeller } from './seller.ts';
+import { registerDepth } from './depth.ts';
+
+const VERSION = '0.1.0';
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
 export interface Deps {
@@ -39,6 +44,34 @@ const originAllowed = (origin: string, host: string | undefined) => {
 
 const isMoney = (m: any): m is Money => Boolean(m) && Number.isInteger(m.minor) && typeof m.currency === 'string';
 const sameMoney = (a: Money, b: Money) => a.currency === b.currency && a.minor === b.minor;
+const TEMPLATES: Template[] = ['flagship', 'exhibition', 'circular', 'unseen'];
+const FAMILIES = ['feasible', 'salvageable', 'impossible'];
+const SPENT: PaymentState[] = ['VOIDED', 'CAPTURE_DENIED', 'REFUND_COMPLETED'];
+
+/** Commit the server runs: Render's deploy commit, else the checked-out HEAD read from the repository files. */
+export function buildInfo(env: Record<string, string | undefined> = process.env, start = process.cwd()): { commit: string | null; source: string } {
+  if (env.RENDER_GIT_COMMIT) return { commit: env.RENDER_GIT_COMMIT, source: 'render' };
+  try {
+    let dir = resolve(start);
+    while (!existsSync(join(dir, '.git'))) {
+      const up = dirname(dir);
+      if (up === dir) return { commit: null, source: 'unknown' };
+      dir = up;
+    }
+    const git = join(dir, '.git');
+    const head = readFileSync(join(git, 'HEAD'), 'utf8').trim();
+    if (!head.startsWith('ref:')) return { commit: head, source: 'local' };
+    const ref = head.slice(4).trim();
+    if (existsSync(join(git, ref))) return { commit: readFileSync(join(git, ref), 'utf8').trim(), source: 'local' };
+    const packed = existsSync(join(git, 'packed-refs')) ? readFileSync(join(git, 'packed-refs'), 'utf8') : '';
+    const line = packed.split('\n').find((l) => l.trim().endsWith(` ${ref}`));
+    return { commit: line ? line.split(' ')[0]! : null, source: line ? 'local' : 'unknown' };
+  } catch {
+    return { commit: null, source: 'unknown' };
+  }
+}
+
+const without = <T extends object>(o: T, ...keys: string[]): T => Object.fromEntries(Object.entries(o).filter(([k]) => !keys.includes(k))) as T;
 
 export function stateFromRecord(r: PayPalRecord, prev: PaymentState): PaymentState {
   if (prev.startsWith('REFUND') && r.refunds?.some((x) => x.status === 'COMPLETED')) return 'REFUND_COMPLETED';
@@ -72,6 +105,8 @@ export function createApp(deps: Deps) {
   const paymentIndex = new Map<string, string>();
   const planIndex = new Map<string, string>();
   const agreementIndex = new Map<string, string>();
+  const truths = new Map<string, any>();
+  const build = buildInfo();
   let gateway = deps.gateway;
   if (!gateway && engine.PayPalSandboxAdapter && config.paypalConfigured) {
     try {
@@ -152,9 +187,33 @@ export function createApp(deps: Deps) {
     if (!gateway) throw new HttpError(503, 'payments_unconfigured', 'Payments are not configured on this server');
     return gateway;
   };
+  const generate = (template: Template, seed: number | null, family: string): Bundle => {
+    if (engine.createMarket) return engine.createMarket({ template, seed, family });
+    if (template === 'unseen') return need(engine.generateWorld, 'market generator')(seed ?? 0, family);
+    if (template !== 'flagship') throw new Unavailable(`${template} market`);
+    return need(engine.flagshipWorld, 'market')();
+  };
+  const templateOf = (s: Session): Template => s.template ?? (s.seed === null || s.family === 'flagship' ? 'flagship' : 'unseen');
+  /** Supplier policies stay in this process: never in a session snapshot, an event or a response. */
   const truthFor = (s: Session) => {
-    if (s.seed === null || s.family === 'flagship') return need(engine.flagshipWorld, 'market')().truth;
-    return need(engine.generateWorld, 'market')(s.seed, s.family).truth;
+    let t = truths.get(s.id);
+    if (!t) {
+      t = generate(templateOf(s), s.seed, s.family).truth;
+      truths.set(s.id, t);
+    }
+    return t;
+  };
+  const payState = (r: any, prev: PaymentState): PaymentState => {
+    if (engine.paymentState && (r.orderStatus || r.captureStatus || r.refunds?.length || r.authorizationStatus)) {
+      const next = engine.paymentState(r) as PaymentState;
+      if (next === 'PAYMENT_PROPOSED' || (next === 'CAPTURE_UNKNOWN' && prev === 'CAPTURE_COMPLETED')) return prev;
+      return next;
+    }
+    return stateFromRecord(r, prev);
+  };
+  const obligationError = (e: unknown): never => {
+    if (e instanceof Error && e.name === 'ObligationError') throw new HttpError(422, String((e as any).code ?? 'rejected'), e.message);
+    throw e;
   };
 
   registerSeller(app, { engine, store, config, session, truthFor, takeLive: () => budget.take() });
@@ -162,29 +221,48 @@ export function createApp(deps: Deps) {
   // ---------- markets ----------
   app.post('/api/markets', async (c) => {
     const b = await body(c);
-    let seed: number | null = null;
-    let family = 'flagship';
-    let gen: { world: any; intent: any };
-    if (typeof b.seed === 'number' && Number.isFinite(b.seed)) {
-      seed = Math.floor(b.seed);
-      family = ['feasible', 'salvageable', 'impossible'].includes(b.family) ? b.family : 'salvageable';
-      gen = need(engine.generateWorld, 'market')(seed, family);
-    } else {
-      gen = need(engine.flagshipWorld, 'market')();
-    }
+    const hasSeed = typeof b.seed === 'number' && Number.isFinite(b.seed);
+    if (b.template !== undefined && !TEMPLATES.includes(b.template)) throw new HttpError(400, 'bad_request', `Unknown template. Use one of: ${TEMPLATES.join(', ')}`);
+    const template: Template = b.template ?? (b.flagship || !hasSeed ? 'flagship' : 'unseen');
+    const seed: number | null = template !== 'unseen' ? null : hasSeed ? Math.abs(Math.floor(b.seed)) % 2_147_483_647 : Math.floor(Math.random() * 1_000_000);
+    const family = template === 'unseen' ? (FAMILIES.includes(b.family) ? b.family : 'salvageable') : template;
+    const gen = generate(template, seed, family);
     const id = `m-${randomUUID().slice(0, 12)}`;
     const s: Session = {
-      id, seed, family, world: gen.world, intent: gen.intent, decisions: [], plans: {}, verified: {}, payments: {},
+      id, template, seed, family, world: gen.world, intent: gen.intent, decisions: [], plans: {}, verified: {}, payments: {},
       approvals: { spent: 0, used: [] }, recoveries: [], disruptions: [],
     };
+    truths.set(id, gen.truth);
     store.save(s);
-    store.emit(id, 'world.created', { world: s.world.name, seed, family, actors: s.world.actors.length, offers: s.world.offers.length }, 'synthetic-market');
-    return c.json({ id, world: s.world, intent: s.intent }, 201);
+    store.emit(id, 'world.created', { world: s.world.name, template, seed, family, actors: s.world.actors.length, offers: s.world.offers.length }, 'synthetic-market');
+    return c.json({ id, market: id, template, seed, family, world: s.world, intent: s.intent }, 201);
   });
+
+  app.get('/api/templates', (c) => c.json({ templates: engine.templates?.() ?? (engine.flagshipWorld ? ['flagship'] : []), families: FAMILIES }));
 
   app.get('/api/markets/:id', (c) => {
     const s = session(c.req.param('id'));
-    return c.json({ id: s.id, world: s.world, intent: s.intent, plans: Object.values(s.plans), agreement: s.agreement ?? null, payments: Object.values(s.payments), recoveries: s.recoveries });
+    return c.json({
+      id: s.id, market: s.id, template: templateOf(s), seed: s.seed, world: s.world, intent: s.intent, plans: Object.values(s.plans), agreement: s.agreement ?? null,
+      history: s.history ?? [], payments: Object.values(s.payments), recoveries: s.recoveries, run: s.run ?? null, options: s.options ?? null,
+    });
+  });
+
+  /** The buyer grants or withdraws scopes explicitly. A spending limit can never exceed the budget the buyer stated. */
+  app.post('/api/markets/:id/authority', async (c) => {
+    const s = session(c.req.param('id'));
+    const b = await body(c);
+    const a = { ...s.intent.authority };
+    for (const k of ['mayNegotiate', 'mayReserve', 'mayPreparePayments'] as const) if (typeof b[k] === 'boolean') a[k] = b[k];
+    if (b.maxSpend !== undefined) {
+      if (!isMoney(b.maxSpend) || b.maxSpend.currency !== s.intent.budget.currency || b.maxSpend.minor < 0) throw new HttpError(400, 'bad_request', 'Spending limit must be an amount in the budget currency');
+      if (b.maxSpend.minor > s.intent.budget.minor) throw new HttpError(422, 'over_budget', 'The spending limit cannot exceed the budget');
+      a.maxSpend = b.maxSpend;
+    }
+    s.intent = { ...s.intent, authority: a };
+    store.save(s);
+    store.emit(s.id, 'intent.compiled', { intent: s.intent.id, authority: a, changedBy: 'buyer' }, 'buyer');
+    return c.json({ authority: a });
   });
 
   app.post('/api/intents/compile', async (c) => {
@@ -217,7 +295,8 @@ export function createApp(deps: Deps) {
   app.post('/api/markets/:id/invent', async (c) => {
     const s = session(c.req.param('id'));
     const b = await body(c);
-    const interventions = await need(engine.findInterventions, 'inverse feasibility search')(s.world, s.intent, { maxChanges: b.maxChanges, k: b.k });
+    const opts = { ...(Number.isInteger(b.maxChanges) ? { maxChanges: b.maxChanges } : {}), ...(Number.isInteger(b.k) ? { k: Math.min(10, b.k) } : {}) };
+    const interventions = await need(engine.findInterventions, 'inverse feasibility search')(s.world, s.intent, opts);
     const coalitions = engine.synthesizeCoalitions ? await engine.synthesizeCoalitions(s.world, s.intent) : [];
     const findings = engine.challengeClaims ? await engine.challengeClaims(s.world, (s.report as any)?.plan ?? null) : [];
     s.interventions = interventions;
@@ -229,22 +308,42 @@ export function createApp(deps: Deps) {
     return c.json({ interventions, coalitions, findings });
   });
 
+  /** Deadline and budget changes are the buyer's to grant; the request says which ones the buyer allows. */
+  const consentFrom = (b: any) => {
+    const given = b?.consent && typeof b.consent === 'object' ? b.consent : {};
+    return (c: Concession): boolean | undefined => {
+      if (c.target.kind !== 'intent') return undefined;
+      const v = given[c.target.field];
+      return typeof v === 'boolean' ? v : undefined;
+    };
+  };
+
   app.post('/api/markets/:id/negotiate', async (c) => {
     const s = session(c.req.param('id'));
     const b = await body(c);
     if (s.intent.authority?.mayNegotiate === false) throw new HttpError(403, 'scope', 'The buyer has not allowed negotiation');
     const live = budget.take();
-    const run = await need(engine.negotiate, 'negotiation')(s.world, s.intent, truthFor(s), { live, interventions: s.interventions, maxQuestions: b.maxQuestions, seed: b.seed });
-    s.run = run;
+    const maxQuestions = Number.isInteger(b.maxQuestions) && b.maxQuestions > 0 ? Math.min(20, b.maxQuestions) : undefined;
+    const run = await need(engine.negotiate, 'negotiation')(s.world, s.intent, truthFor(s), { live, interventions: s.interventions, maxQuestions, buyerConsent: consentFrom(b) });
+    s.run = without(run, 'world', 'before');
     s.decisions = run.decisions ?? s.decisions;
     if (run.world) s.world = run.world;
     if (run.intent) s.intent = run.intent;
-    const plan: Plan | undefined = run.plan ?? run.report?.plan;
+    const plan: Plan | undefined = run.plan ?? (run.verification?.ok === false ? undefined : run.report?.plan);
     if (plan) s.plans[plan.id] = plan;
     store.save(s);
     index(s);
-    for (const m of run.messages ?? []) store.emit(s.id, 'negotiation.message', m, 'solver');
-    for (const d of run.decisions ?? []) store.emit(s.id, 'negotiation.decision', d, d.basis === 'seller-terminal' ? 'seller-terminal' : 'synthetic-market');
+    const accepts: string[] = [];
+    for (const m of run.messages ?? []) {
+      const ev = store.emit(s.id, 'negotiation.message', m, m.type === 'Propose' || m.type === 'AskPreference' ? 'solver' : 'synthetic-market', { actor: m.from });
+      if (m.type === 'Accept') accepts.push(ev.id);
+    }
+    const decided: string[] = [];
+    for (const d of run.decisions ?? []) decided.push(store.emit(s.id, 'negotiation.decision', d, d.basis === 'seller-terminal' ? 'seller-terminal' : 'synthetic-market').id);
+    if (plan) {
+      const causes = accepts.length ? accepts : decided.length ? decided : undefined;
+      store.emit(s.id, 'solve.completed', { status: run.report?.status ?? 'feasible', solver: run.report?.solver ?? null, plan: plan.id, total: plan.total, after: 'negotiation', unlockedBy: run.unlockedBy ?? null }, 'solver', { causes });
+    }
     return c.json({ ...run, planId: plan?.id ?? null });
   });
 
@@ -259,6 +358,28 @@ export function createApp(deps: Deps) {
     return c.json(v);
   });
 
+  /** Every party signs the exact terms hash: the buyer by asking to commit, each supplier only for terms it already offers. */
+  const signAndCommit = (s: Session, draft: Agreement, why: string, recovery?: string) => {
+    if (draft.state === 'COMMITTED' || !engine.sign) return { agreement: draft, acceptedBy: [] as string[] };
+    const { agreement, accepts, declined } = engine.sign(draft, s.world, truthFor(s));
+    const acceptedBy: string[] = [];
+    const causes = store.causal.get(s.id, [recovery ? `recovery:${recovery}` : null, `verify:${draft.plan}`, `plan:${draft.plan}`]);
+    for (const m of accepts) {
+      const buyer = !agreement.obligations.some((o) => o.actor === (m as any).from);
+      acceptedBy.push(store.emit(s.id, 'negotiation.message', m, buyer ? 'buyer' : 'synthetic-market', { actor: (m as any).from, causes }).id);
+    }
+    if (agreement.state !== 'COMMITTED') {
+      const names = declined.map((d) => `${s.world.actors.find((a) => a.id === d.actor)?.name ?? d.actor} (${d.reason})`).join(', ');
+      throw new HttpError(409, 'not_accepted', `${why} is not accepted by every party yet${names ? `: ${names}` : ''}`);
+    }
+    return { agreement, acceptedBy };
+  };
+
+  const emitAgreement = (s: Session, a: Agreement, extra: Record<string, unknown> = {}) => {
+    store.emit(s.id, 'agreement.state', { agreement: a, state: a.state, termsHash: a.termsHash, plan: a.plan, ...extra }, 'solver');
+    for (const o of a.obligations) store.emit(s.id, 'obligation.state', { obligation: o, state: o.state }, 'solver', { actor: o.actor });
+  };
+
   app.post('/api/agreements/:id/commit', async (c) => {
     // The path id names the plan being committed; the agreement id is minted at commit.
     const b = await body(c);
@@ -269,20 +390,28 @@ export function createApp(deps: Deps) {
     if (!v.ok) throw new HttpError(422, 'unverified', 'This plan did not pass independent verification');
     s.verified[plan.id] = true;
     if (plan.total.minor > s.intent.budget.minor) throw new HttpError(422, 'over_budget', 'Plan exceeds the budget');
-    const agreement: Agreement = await need(engine.commit, 'obligations')(plan, s.intent, s.decisions);
+    let draft: Agreement;
+    try {
+      draft = await need(engine.commit, 'obligations')(plan, s.intent, s.decisions, { world: s.world });
+    } catch (e) {
+      obligationError(e);
+      throw e;
+    }
+    const { agreement, acceptedBy } = signAndCommit(s, draft, 'This agreement');
     s.agreement = agreement;
     store.save(s);
     index(s);
-    store.emit(s.id, 'agreement.state', { agreement: agreement.id, state: agreement.state, termsHash: agreement.termsHash }, 'solver');
-    for (const o of agreement.obligations) store.emit(s.id, 'obligation.state', { obligation: o.id, state: o.state }, 'solver', { actor: o.actor });
+    emitAgreement(s, agreement, { acceptedBy });
     return c.json(agreement, 201);
   });
 
   // ---------- payments: money only moves behind a buyer approval bound to terms and amount ----------
-  const owed = (agreement: Agreement, payee: string): Money | null => {
-    const mine = agreement.obligations.filter((o) => o.actor === payee && o.state !== 'CANCELLED' && o.state !== 'REPLACED');
+  /** What is still owed to a payee: live obligations not already covered by a payment that is open or captured. */
+  const owedTo = (s: Session, agreement: Agreement, payee: string) => {
+    const covered = new Set(Object.values(s.payments).filter((p) => p.agreement === agreement.id && !SPENT.includes(p.state)).flatMap((p) => p.obligations));
+    const mine = agreement.obligations.filter((o) => o.actor === payee && o.state !== 'CANCELLED' && o.state !== 'REPLACED' && !covered.has(o.id));
     if (!mine.length) return null;
-    return { currency: mine[0]!.amount.currency, minor: mine.reduce((a, o) => a + o.amount.minor, 0) };
+    return { obligations: mine.map((o) => o.id), amount: { currency: mine[0]!.amount.currency, minor: mine.reduce((a, o) => a + o.amount.minor, 0) } as Money };
   };
 
   app.post('/api/agreements/:id/approve-payment', async (c) => {
@@ -291,27 +420,46 @@ export function createApp(deps: Deps) {
     if (agreement.state !== 'COMMITTED' && agreement.state !== 'FULFILLING') throw new HttpError(409, 'state', 'Agreement is not committed');
     if (s.intent.authority?.mayPreparePayments === false) throw new HttpError(403, 'scope', 'The buyer has not allowed payment preparation');
     if (b.termsHash !== agreement.termsHash) throw new HttpError(409, 'terms_changed', 'The agreement terms changed since you reviewed them');
-    const due = typeof b.payee === 'string' ? owed(agreement, b.payee) : null;
+    const due = typeof b.payee === 'string' ? owedTo(s, agreement, b.payee) : null;
     if (!due) throw new HttpError(404, 'not_found', 'Nothing is owed to that supplier');
-    if (!isMoney(b.amount) || !sameMoney(b.amount, due)) throw new HttpError(409, 'amount_mismatch', 'Approved amount does not match what is owed');
+    if (!isMoney(b.amount) || !sameMoney(b.amount, due.amount)) throw new HttpError(409, 'amount_mismatch', 'Approved amount does not match what is owed');
     const max = s.intent.authority?.maxSpend;
-    if (max && s.approvals.spent + due.minor > max.minor) throw new HttpError(403, 'over_limit', 'This would exceed the buyer spending limit');
-    const { token, claim } = approvals.issue({ kind: 'pay', agreement: agreement.id, subject: b.payee, termsHash: agreement.termsHash, amount: due });
-    store.emit(s.id, 'payment.state', { approval: 'issued', payee: b.payee, amount: due, expires: new Date(claim.exp).toISOString() }, 'buyer');
-    return c.json({ approvalToken: token, expiresAt: new Date(claim.exp).toISOString(), amount: due });
+    if (max && s.approvals.spent + due.amount.minor > max.minor) throw new HttpError(403, 'over_limit', 'This would exceed the buyer spending limit');
+    const { token, claim } = approvals.issue({ kind: 'pay', agreement: agreement.id, subject: b.payee, termsHash: agreement.termsHash, amount: due.amount });
+    return c.json({ approvalToken: token, expiresAt: new Date(claim.exp).toISOString(), amount: due.amount, obligations: due.obligations });
   });
 
-  const apply = (s: Session, pi: PaymentIntent, r: any) => {
+  const apply = (s: Session, pi: PaymentIntent, r: any, extra: Record<string, unknown> = {}) => {
     const rec: PayPalRecord = r?.paypal ?? r ?? pi.paypal;
-    pi.paypal = { ...pi.paypal, ...rec, refunds: rec.refunds ?? pi.paypal.refunds, debugIds: rec.debugIds ?? pi.paypal.debugIds };
-    const next = stateFromRecord(pi.paypal, pi.state);
-    if (next !== pi.state) {
-      pi.state = next;
-      store.emit(s.id, 'payment.state', { payment: pi.id, state: pi.state, paypalStatus: pi.paypal.status ?? null }, 'paypal-sandbox');
-    }
+    pi.paypal = { ...pi.paypal, ...rec, refunds: rec.refunds ?? pi.paypal.refunds, debugIds: [...new Set([...(pi.paypal.debugIds ?? []), ...(rec.debugIds ?? [])])] };
+    const next = payState(pi.paypal, pi.state);
+    const changed = next !== pi.state;
+    pi.state = next;
     store.save(s);
     paymentIndex.set(pi.id, s.id);
+    if (changed || Object.keys(extra).length) store.emit(s.id, 'payment.state', { payment: pi, state: pi.state, paypalStatus: pi.paypal.status ?? null, ...extra }, 'paypal-sandbox', { actor: pi.payee });
   };
+
+  const returnBase = (c: Context) => {
+    const origin = c.req.header('origin');
+    if (origin && originAllowed(origin, c.req.header('host'))) return origin;
+    try {
+      return new URL(c.req.url).origin;
+    } catch {
+      return undefined;
+    }
+  };
+
+  /** Takes the payment module's result as the new truth for this payment and records the change. */
+  const adopt = (s: Session, pi: PaymentIntent, next: PaymentIntent, extra: Record<string, unknown> = {}) => {
+    const changed = next.state !== pi.state || next.paypal.captureId !== pi.paypal.captureId || next.paypal.refunds.length !== pi.paypal.refunds.length;
+    pi.state = next.state;
+    pi.paypal = next.paypal;
+    store.save(s);
+    if (changed || Object.keys(extra).length) store.emit(s.id, 'payment.state', { payment: pi, state: pi.state, paypalStatus: pi.paypal.status ?? null, ...extra }, 'paypal-sandbox', { actor: pi.payee });
+  };
+  const refused = (e: any) => e?.name === 'PayPalApiError' && e.outcomeUnknown === false;
+  const pay = engine.payments;
 
   app.post('/api/payments/orders', async (c) => {
     const b = await body(c);
@@ -320,30 +468,39 @@ export function createApp(deps: Deps) {
     if (!claim || claim.kind !== 'pay') throw new HttpError(403, 'approval_invalid', 'The buyer approval is missing, expired or invalid');
     const gw = needGateway();
     const { s, agreement } = findAgreement(claim.agreement, b.market);
-    const due = owed(agreement, claim.subject);
-    if (agreement.termsHash !== claim.termsHash || !due || !sameMoney(due, claim.amount)) throw new HttpError(409, 'approval_stale', 'The approval no longer matches the agreement');
     if (typeof b.agreementId === 'string' && b.agreementId !== agreement.id) throw new HttpError(409, 'approval_mismatch', 'The approval is for a different agreement');
-    const operationKey = createHash('sha256').update(`${agreement.id}|${agreement.termsHash}|${claim.subject}|${due.minor}`).digest('hex').slice(0, 32);
+    const operationKey = createHash('sha256').update(`${agreement.id}|${agreement.termsHash}|${claim.subject}|${claim.amount.minor}|${claim.nonce}`).digest('hex').slice(0, 32);
     const existing = Object.values(s.payments).find((p) => p.operationKey === operationKey);
     if (existing) return c.json(existing);
+    const due = owedTo(s, agreement, claim.subject);
+    if (agreement.termsHash !== claim.termsHash || !due || !sameMoney(due.amount, claim.amount)) throw new HttpError(409, 'approval_stale', 'The approval no longer matches the agreement');
     if (usedTokens.has(claim.nonce)) throw new HttpError(403, 'approval_used', 'This approval was already used');
     usedTokens.add(claim.nonce);
     const max = s.intent.authority?.maxSpend;
-    if (max && s.approvals.spent + due.minor > max.minor) throw new HttpError(403, 'over_limit', 'This would exceed the buyer spending limit');
+    if (max && s.approvals.spent + due.amount.minor > max.minor) throw new HttpError(403, 'over_limit', 'This would exceed the buyer spending limit');
     const pi: PaymentIntent = {
-      id: `pay-${randomUUID().slice(0, 12)}`, operationKey, agreement: agreement.id,
-      obligations: agreement.obligations.filter((o) => o.actor === claim.subject).map((o) => o.id),
-      payee: claim.subject, amount: due, charged: due, state: 'PAYMENT_PROPOSED',
+      id: `pay-${randomUUID().slice(0, 12)}`, operationKey, agreement: agreement.id, obligations: due.obligations,
+      payee: claim.subject, amount: due.amount, charged: due.amount, state: 'PAYMENT_PROPOSED',
       paypal: { env: 'sandbox', refunds: [], debugIds: [] },
     };
     s.payments[pi.id] = pi;
-    s.approvals.spent += due.minor;
-    store.emit(s.id, 'payment.state', { payment: pi.id, state: pi.state, approvedBy: 'buyer' }, 'buyer');
+    s.approvals.spent += due.amount.minor;
+    const payeeName = s.world.actors.find((a) => a.id === pi.payee)?.name ?? pi.payee;
+    const stageName = (id: string) => s.world.stages.find((x) => x.id === id)?.name ?? id;
+    const lines = agreement.obligations.filter((o) => due.obligations.includes(o.id)).map((o) => ({ obligation: o.id, name: `${stageName(o.stage)}, ${payeeName}`.slice(0, 127), amount: o.amount }));
+    const base = returnBase(c);
+    const orderOpts = {
+      description: `${s.world.name}: ${payeeName}`.slice(0, 127), lines,
+      ...(base ? { returnUrl: `${base}/?paypal=return&payment=${pi.id}`, cancelUrl: `${base}/?paypal=cancel&payment=${pi.id}` } : {}),
+    };
+    const extra = { approvedBy: 'buyer', gateway: gw.kind ?? 'paypal-sandbox' };
     try {
-      apply(s, pi, await gw.createOrder(pi));
+      if (pay?.open) adopt(s, pi, await pay.open(pi, gw, { ...orderOpts, authority: s.intent.authority }), extra);
+      else apply(s, pi, await gw.createOrder(pi, orderOpts), extra);
+      paymentIndex.set(pi.id, s.id);
     } catch {
       usedTokens.delete(claim.nonce);
-      s.approvals.spent -= due.minor;
+      s.approvals.spent -= due.amount.minor;
       delete s.payments[pi.id];
       store.save(s);
       throw new HttpError(503, 'payments_unavailable', 'The payment provider could not create the order');
@@ -356,8 +513,10 @@ export function createApp(deps: Deps) {
     const gw = needGateway();
     if (pi.paypal.orderId) {
       try {
-        const fresh = await gw.getOrder(pi.paypal.orderId);
-        apply(s, pi, { ...(fresh?.paypal ?? fresh), lastFetchedAt: new Date().toISOString() });
+        if (pay?.reconcile) adopt(s, pi, await pay.reconcile(pi, gw));
+        else apply(s, pi, await gw.getOrder(pi.paypal.orderId));
+        pi.paypal.lastFetchedAt = new Date().toISOString();
+        store.save(s);
       } catch {
         /* last known state is served, dated by lastFetchedAt */
       }
@@ -371,25 +530,32 @@ export function createApp(deps: Deps) {
     if (pi.state === 'CAPTURE_COMPLETED') return c.json(pi);
     if (!['APPROVED', 'PAYER_ACTION_REQUIRED', 'ORDER_CREATED', 'CAPTURE_UNKNOWN', 'CAPTURE_PENDING'].includes(pi.state)) throw new HttpError(409, 'state', 'This payment cannot be captured now');
     try {
-      if (pi.state !== 'CAPTURE_UNKNOWN') pi.state = 'CAPTURE_PENDING';
-      apply(s, pi, await gw.capture(pi));
-      if (pi.state === 'CAPTURE_PENDING' && pi.paypal.captureId) pi.state = 'CAPTURE_COMPLETED';
-    } catch {
+      if (pay?.capture) adopt(s, pi, await pay.capture(pi, gw));
+      else {
+        apply(s, pi, await gw.capture(pi));
+        if ((pi.state as PaymentState) !== 'CAPTURE_COMPLETED' && pi.paypal.captureId && pi.paypal.status === 'COMPLETED') pi.state = 'CAPTURE_COMPLETED';
+      }
+    } catch (e: any) {
+      if (refused(e)) throw new HttpError(409, 'refused', `PayPal refused the capture${e.issue ? ` (${e.issue})` : ''}`);
       pi.state = 'CAPTURE_UNKNOWN';
       store.save(s);
-      store.emit(s.id, 'payment.state', { payment: pi.id, state: pi.state }, 'paypal-sandbox');
+      store.emit(s.id, 'payment.state', { payment: pi, state: pi.state }, 'paypal-sandbox', { actor: pi.payee });
       throw new HttpError(503, 'capture_unknown', 'Capture outcome unknown. Retrieve the payment to reconcile before retrying');
     }
+    if (pi.state === 'PAYER_ACTION_REQUIRED') throw new HttpError(409, 'not_approved', 'The buyer has not approved this order on PayPal yet');
     return c.json(pi);
   });
+
+  const REFUNDABLE: PaymentState[] = ['CAPTURE_COMPLETED', 'REFUND_COMPLETED', 'REFUND_DENIED'];
 
   app.post('/api/payments/:id/approve-refund', async (c) => {
     const b = await body(c);
     const { s, pi } = findPayment(c.req.param('id'));
     const { agreement } = findAgreement(pi.agreement, s.id);
-    if (pi.state !== 'CAPTURE_COMPLETED') throw new HttpError(409, 'state', 'Only captured payments can be refunded');
-    const amount = isMoney(b.amount) ? b.amount : pi.charged;
-    if (amount.currency !== pi.charged.currency || amount.minor <= 0 || amount.minor > pi.charged.minor) throw new HttpError(409, 'amount_mismatch', 'Refund amount is out of range');
+    if (!REFUNDABLE.includes(pi.state) || !pi.paypal.captureId) throw new HttpError(409, 'state', 'Only captured payments can be refunded');
+    const left: Money = pay?.refundable ? pay.refundable(pi) : pi.charged;
+    const amount = isMoney(b.amount) ? b.amount : left;
+    if (amount.currency !== left.currency || amount.minor <= 0 || amount.minor > left.minor) throw new HttpError(409, 'amount_mismatch', 'Refund amount is out of range');
     const { token } = approvals.issue({ kind: 'refund', agreement: agreement.id, subject: pi.id, termsHash: agreement.termsHash, amount });
     return c.json({ approvalToken: token, amount });
   });
@@ -402,10 +568,21 @@ export function createApp(deps: Deps) {
     const gw = needGateway();
     if (usedTokens.has(claim.nonce)) throw new HttpError(403, 'approval_used', 'This approval was already used');
     usedTokens.add(claim.nonce);
+    if (pay?.refund) {
+      try {
+        adopt(s, pi, await pay.refund(pi, gw, claim.amount), { approvedBy: 'buyer' });
+      } catch (e: any) {
+        if (refused(e) || e?.name === 'MoneyError' || e?.name === 'PaymentInvariantError') throw new HttpError(409, 'refused', 'The refund was refused');
+        pi.state = 'REFUND_UNKNOWN';
+        store.save(s);
+        throw new HttpError(503, 'refund_unknown', 'Refund outcome unknown. Retrieve the payment to reconcile');
+      }
+      return c.json(pi);
+    }
     pi.state = 'REFUND_PENDING';
     try {
       apply(s, pi, await gw.refund(pi, claim.amount));
-      if (pi.state === 'REFUND_PENDING' && pi.paypal.refunds.length) pi.state = 'REFUND_COMPLETED';
+      if (pi.state === 'REFUND_PENDING' && pi.paypal.refunds.some((r) => r.status === 'COMPLETED')) pi.state = 'REFUND_COMPLETED';
     } catch {
       pi.state = 'REFUND_UNKNOWN';
       throw new HttpError(503, 'refund_unknown', 'Refund outcome unknown. Retrieve the payment to reconcile');
@@ -443,29 +620,44 @@ export function createApp(deps: Deps) {
     const resId = ev?.resource?.id;
     const orderId = ev?.resource?.supplementary_data?.related_ids?.order_id ?? resId;
     let market = '';
+    let payment: string | null = null;
     for (const sess of store.sessions.values()) {
-      if (Object.values(sess.payments).some((p) => p.paypal.orderId === orderId || p.paypal.captureId === resId)) market = sess.id;
+      const hit = Object.values(sess.payments).find((p) => p.paypal.orderId === orderId || p.paypal.captureId === resId);
+      if (hit) {
+        market = sess.id;
+        payment = hit.id;
+      }
     }
-    const summary = { id: eid, type: ev.event_type, resource: resId ?? null, status: ev?.resource?.status ?? null };
+    const summary = { id: eid, type: ev.event_type, resource: resId ?? null, status: ev?.resource?.status ?? null, payment };
     store.emit('_webhooks', 'paypal.webhook', summary, 'paypal-sandbox');
     if (market) store.emit(market, 'paypal.webhook', summary, 'paypal-sandbox');
     return c.json({ ok: true });
   });
 
   // ---------- disruption and recovery ----------
+  const KINDS = ['withdraw', 'capacity-drop', 'delay', 'price-change', 'claim-overturned', 'payment-failed'];
+  const ids = (l: any[] | undefined) => (l ?? []).map((o: any) => (typeof o === 'string' ? o : o.id));
+
   app.post('/api/markets/:id/disrupt', async (c) => {
     const s = session(c.req.param('id'));
     const b = await body(c);
     if (!s.agreement) throw new HttpError(409, 'state', 'Nothing is committed yet');
-    const kinds = ['withdraw', 'capacity-drop', 'delay', 'price-change', 'claim-overturned', 'payment-failed'];
-    if (!kinds.includes(b.kind)) throw new HttpError(400, 'bad_request', 'Unknown disruption kind');
-    const d: Disruption = { id: `d-${randomUUID().slice(0, 8)}`, kind: b.kind, actor: b.actor, offer: b.offer, detail: String(b.detail ?? b.kind).slice(0, 300), at: new Date().toISOString() };
-    const r = await need(engine.disrupt, 'obligations')(s.agreement, s.world, d);
+    if (!KINDS.includes(b.kind)) throw new HttpError(400, 'bad_request', 'Unknown disruption kind');
+    const str = (v: unknown) => (typeof v === 'string' && v.length <= 120 ? v : undefined);
+    // Market time: an explicit valid time, else the moment the agreement was made.
+    const at = typeof b.at === 'string' && !Number.isNaN(Date.parse(b.at)) ? new Date(b.at).toISOString() : s.agreement.createdAt;
+    const d: Disruption = { id: `d-${randomUUID().slice(0, 8)}`, kind: b.kind, actor: str(b.actor), offer: str(b.offer), detail: String(b.detail ?? b.kind).slice(0, 300), at };
+    if (b.params && typeof b.params === 'object') {
+      const p: Record<string, number | string> = {};
+      for (const k of ['capacity', 'delayHours', 'unitPriceMinor', 'pricePercent', 'claim']) if (typeof b.params[k] === 'number' || typeof b.params[k] === 'string') p[k] = b.params[k];
+      (d as any).params = p;
+    }
+    const r = await need(engine.disrupt, 'obligations')(s.agreement, s.world, d, { payments: Object.values(s.payments) });
     s.world = r.world ?? s.world;
     s.disruptions.push(d);
     store.save(s);
-    store.emit(s.id, 'disruption.applied', { disruption: d, affected: (r.affected ?? []).map((o: any) => o.id) }, 'solver', { actor: d.actor });
-    return c.json({ disruption: d, affected: r.affected ?? [] });
+    store.emit(s.id, 'disruption.applied', { disruption: d, affected: ids(r.affected), atRisk: ids(r.atRisk), endangeredPayments: r.endangeredPayments ?? [] }, 'solver', { actor: d.actor });
+    return c.json({ ...without(r, 'world'), disruption: d, affected: r.affected ?? [], world: s.world });
   });
 
   app.post('/api/markets/:id/recover', async (c) => {
@@ -475,17 +667,78 @@ export function createApp(deps: Deps) {
     const list = s.disruptions as Disruption[];
     const d = list.find((x) => x.id === b.disruption) ?? list.at(-1);
     if (!d) throw new HttpError(409, 'state', 'No disruption to recover from');
-    const rec = await need(engine.recover, 'recovery')(s.agreement, s.world, s.intent, d);
-    s.recoveries.push(rec);
+    const recover = need(engine.recover, 'recovery');
+    const payments = Object.values(s.payments);
+    let rec = await recover(s.agreement, s.world, s.intent, d, { payments });
+    let negotiated: any = null;
+    // With published offers exhausted, suppliers are asked for the smallest change; their private policies answer.
+    if (!rec.feasible && engine.negotiate && b.negotiate !== false && s.intent.authority?.mayNegotiate !== false) {
+      const run = await engine.negotiate(rec.world ?? s.world, s.intent, truthFor(s), { buyerConsent: consentFrom(b), explain: false });
+      if (run.accepted?.length && run.world) {
+        const again = await recover(s.agreement, run.world, s.intent, d, { payments });
+        const accepts: string[] = [];
+        for (const m of run.messages ?? []) {
+          const ev = store.emit(s.id, 'negotiation.message', m, m.type === 'Propose' || m.type === 'AskPreference' ? 'solver' : 'synthetic-market', { actor: m.from });
+          if (m.type === 'Accept') accepts.push(ev.id);
+        }
+        for (const dec of run.decisions ?? []) store.emit(s.id, 'negotiation.decision', dec, dec.basis === 'seller-terminal' ? 'seller-terminal' : 'synthetic-market');
+        negotiated = { outcome: run.outcome, accepted: run.accepted, messages: run.messages?.length ?? 0, feasibleAfter: again.feasible };
+        if (again.feasible) {
+          rec = again;
+          s.decisions = [...s.decisions, ...(run.decisions ?? [])];
+        }
+      } else negotiated = { outcome: run.outcome, accepted: [], messages: run.messages?.length ?? 0, feasibleAfter: false };
+    }
+    const kept = { ...without(rec, 'world'), ...(negotiated ? { negotiated } : {}) };
+    s.recoveries.push(kept);
+    if (rec.world) s.world = rec.world;
     store.save(s);
-    store.emit(s.id, 'recovery.proposed', rec, 'solver');
-    return c.json(rec);
+    store.emit(s.id, 'recovery.proposed', { recovery: kept }, 'solver');
+    return c.json({ ...rec, ...(negotiated ? { negotiated } : {}), recovery: kept, agreement: rec.amendment ?? s.agreement });
+  });
+
+  app.post('/api/markets/:id/recover/commit', async (c) => {
+    const s = session(c.req.param('id'));
+    const b = await body(c);
+    if (!s.agreement) throw new HttpError(409, 'state', 'Nothing is committed yet');
+    const recs = s.recoveries as any[];
+    const rec = recs.find((r) => r.id === b.recovery) ?? recs.at(-1);
+    if (!rec) throw new HttpError(409, 'state', 'No recovery to commit');
+    if (!rec.feasible) throw new HttpError(422, 'infeasible', 'This recovery is not feasible');
+    if (!rec.amendment) return c.json({ agreement: s.agreement, recovery: rec.id, changed: false });
+    if (rec.amendment.version !== s.agreement.version + 1) throw new HttpError(409, 'stale', 'The agreement changed since this recovery was proposed');
+    if (b.termsHash !== undefined && b.termsHash !== rec.amendment.termsHash) throw new HttpError(409, 'terms_changed', 'The amended terms changed since you reviewed them');
+    const signed = signAndCommit(s, rec.amendment, 'The amended agreement', rec.id);
+    const prior = s.agreement;
+    let superseded: Agreement = { ...prior, state: 'AMENDED' };
+    let agreement = signed.agreement;
+    let moved: any[] = [];
+    if (engine.commitRecovery) {
+      try {
+        const r = engine.commitRecovery(prior, rec, signed.agreement.acceptances);
+        superseded = r.original;
+        agreement = r.amended;
+        moved = r.obligations;
+      } catch (e) {
+        obligationError(e);
+      }
+    }
+    s.history = [...(s.history ?? []), { ...superseded, obligations: superseded.obligations.map((o) => moved.find((x) => x.id === o.id) ?? o) }];
+    s.agreement = agreement;
+    store.save(s);
+    index(s);
+    store.emit(s.id, 'agreement.state', { agreement: superseded, state: superseded.state, termsHash: superseded.termsHash, plan: superseded.plan, recovery: rec.id }, 'solver');
+    for (const o of moved) store.emit(s.id, 'obligation.state', { obligation: o, state: o.state, recovery: rec.id }, 'solver', { actor: o.actor });
+    emitAgreement(s, agreement, { acceptedBy: signed.acceptedBy, recovery: rec.id });
+    store.emit(s.id, 'recovery.committed', { recovery: rec }, 'solver');
+    return c.json({ agreement, recovery: rec.id, changed: true });
   });
 
   // ---------- observation ----------
   app.get('/api/markets/:id/events', (c) => {
     const id = c.req.param('id');
     session(id);
+    if (c.req.query('format') === 'json') return c.json({ events: store.events(id) });
     const after = Number(c.req.query('after') ?? c.req.header('last-event-id') ?? 0) || 0;
     return streamSSE(c, async (stream) => {
       const queue: any[] = [];
@@ -549,6 +802,8 @@ export function createApp(deps: Deps) {
     return c.json({ entity, events: [...chain.values()].sort((a, b) => a.seq - b.seq) });
   });
 
+  registerDepth(app, { engine, store, session, truthFor, body, fail: (status, code, message) => new HttpError(status, code, message) });
+
   app.get('/api/status', (c) => {
     let payments = 0;
     let agreements = 0;
@@ -556,11 +811,16 @@ export function createApp(deps: Deps) {
       payments += Object.keys(s.payments).length;
       if (s.agreement) agreements += 1;
     }
+    const kind: string = gateway ? (gateway.kind ?? 'paypal-sandbox') : 'none';
     return c.json({
       ok: true,
+      version: VERSION,
+      build,
+      paypal: { env: 'sandbox', configured: kind === 'paypal-sandbox', gateway: kind },
       services: {
         ...availability(engine),
-        paypalConfigured: Boolean(gateway),
+        paypalConfigured: kind === 'paypal-sandbox',
+        paymentsGateway: kind,
         aiConfigured: config.aiKeyConfigured,
         aiEnabled: config.aiEnabled,
         aiBudgetLeft: config.aiEnabled && budget.usedToday < config.dailyAiCalls,
