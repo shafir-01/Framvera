@@ -9,6 +9,7 @@ import { loadConfig, type Config } from './config.ts';
 import { Store, type Session } from './store.ts';
 import { AiBudget, Approvals, RateLimiter } from './security.ts';
 import { staticHandler } from './static.ts';
+import { register as registerSeller } from './seller.ts';
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
 export interface Deps {
@@ -155,6 +156,8 @@ export function createApp(deps: Deps) {
     if (s.seed === null || s.family === 'flagship') return need(engine.flagshipWorld, 'market')().truth;
     return need(engine.generateWorld, 'market')(s.seed, s.family).truth;
   };
+
+  registerSeller(app, { engine, store, config, session, truthFor, takeLive: () => budget.take() });
 
   // ---------- markets ----------
   app.post('/api/markets', async (c) => {
