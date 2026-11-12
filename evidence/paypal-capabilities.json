@@ -1,0 +1,128 @@
+{
+  "kind": "paypal-sandbox-capabilities",
+  "source": "paypal-sandbox",
+  "environment": "https://api-m.sandbox.paypal.com",
+  "startedAt": "2026-11-12T13:55:31.293Z",
+  "cardPaymentSource": {
+    "http": 201,
+    "orderId": "7EU83793E83345328",
+    "orderStatus": "COMPLETED",
+    "captures": [
+      {
+        "id": "6CE43226RH7999543",
+        "status": "COMPLETED",
+        "amount": {
+          "currency": "SEK",
+          "minor": 1000
+        }
+      }
+    ],
+    "payerActionLink": false,
+    "debugId": "f6182579c73ca",
+    "cleanupRefunds": [
+      {
+        "captureId": "6CE43226RH7999543",
+        "http": 201,
+        "refundId": "9PY78875YY347533X",
+        "status": "COMPLETED",
+        "debugId": "f86256280b745"
+      }
+    ],
+    "available": true
+  },
+  "multiplePurchaseUnits": {
+    "create": {
+      "http": 200,
+      "orderId": "2WR15631UL150482X",
+      "orderStatus": "PAYER_ACTION_REQUIRED",
+      "units": [
+        {
+          "referenceId": "probe-obl-a",
+          "amount": {
+            "currency": "SEK",
+            "minor": 700
+          },
+          "payeeAssignedByPayPal": true
+        },
+        {
+          "referenceId": "probe-obl-b",
+          "amount": {
+            "currency": "SEK",
+            "minor": 550
+          },
+          "payeeAssignedByPayPal": true
+        }
+      ],
+      "distinctPayees": 1,
+      "debugId": "f1769896aef6c"
+    },
+    "approval": {
+      "browserCompleted": true,
+      "steps": [
+        "checkout-opened",
+        "email-entered",
+        "next",
+        "logged-in",
+        "pay-clicked",
+        "still-on-paypal"
+      ]
+    },
+    "approvedStatus": "APPROVED",
+    "capture": {
+      "http": 201,
+      "orderStatus": "COMPLETED",
+      "units": [
+        {
+          "referenceId": "probe-obl-b",
+          "captures": [
+            {
+              "id": "49E92784AF886953J",
+              "status": "COMPLETED",
+              "amount": {
+                "currency": "SEK",
+                "minor": 550
+              }
+            }
+          ]
+        },
+        {
+          "referenceId": "probe-obl-a",
+          "captures": [
+            {
+              "id": "0W020322CN883032P",
+              "status": "COMPLETED",
+              "amount": {
+                "currency": "SEK",
+                "minor": 700
+              }
+            }
+          ]
+        }
+      ],
+      "debugId": "f73899650ac85"
+    },
+    "cleanupRefunds": [
+      {
+        "captureId": "49E92784AF886953J",
+        "http": 201,
+        "refundId": "69346034X0299253H",
+        "status": "COMPLETED",
+        "debugId": "f2009790800a3"
+      },
+      {
+        "captureId": "0W020322CN883032P",
+        "http": 201,
+        "refundId": "2VT129367T3902622",
+        "status": "COMPLETED",
+        "debugId": "f3901437695fc"
+      }
+    ]
+  },
+  "webhooks": {
+    "http": 200,
+    "count": 0,
+    "webhooks": [],
+    "debugId": "f768897e46208"
+  },
+  "finishedAt": "2026-11-12T13:56:01.275Z"
+}

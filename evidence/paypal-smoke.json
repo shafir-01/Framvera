@@ -1,0 +1,251 @@
+{
+  "kind": "paypal-sandbox-smoke",
+  "source": "paypal-sandbox",
+  "environment": "https://api-m.sandbox.paypal.com",
+  "integration": "@paypal/paypal-server-sdk 2.5.0 (Orders v2, Payments v2) + REST webhook verification",
+  "approval": "sandbox test buyer via automated browser on PayPal sandbox checkout (test harness)",
+  "startedAt": "2026-11-12T13:49:24.155Z",
+  "finishedAt": "2026-11-12T13:49:47.831Z",
+  "result": "ok",
+  "steps": [
+    {
+      "step": "intent",
+      "at": "2026-11-12T13:49:24.156Z",
+      "paymentId": "pay_smoke_20261112134924",
+      "operationKey": "1ba244cd-57b0-4dd2-86cc-b01378a760ee",
+      "amount": {
+        "currency": "SEK",
+        "minor": 123450
+      },
+      "obligations": [
+        "obl_smoke_20261112134924_print",
+        "obl_smoke_20261112134924_assembly"
+      ]
+    },
+    {
+      "step": "order.created",
+      "at": "2026-11-12T13:49:25.739Z",
+      "ms": 1583,
+      "state": "PAYER_ACTION_REQUIRED",
+      "paypalStatus": {
+        "order": "PAYER_ACTION_REQUIRED"
+      },
+      "ids": {
+        "orderId": "8UN02957XE984330H",
+        "refundIds": []
+      },
+      "refunds": [],
+      "replayed": false,
+      "debugIds": [
+        "f5105381e0dbd"
+      ],
+      "requestId": "edbc4683-7c58-50a3-b802-18b8ab8665e7"
+    },
+    {
+      "step": "buyer.approval",
+      "at": "2026-11-12T13:49:39.118Z",
+      "ms": 13379,
+      "browserCompleted": true,
+      "browserSteps": [
+        "checkout-opened",
+        "email-entered",
+        "next",
+        "logged-in",
+        "pay-clicked",
+        "still-on-paypal"
+      ],
+      "finalHost": "chromewebdata"
+    },
+    {
+      "step": "order.approved",
+      "at": "2026-11-12T13:49:39.692Z",
+      "ms": 13953,
+      "state": "APPROVED",
+      "paypalStatus": {
+        "order": "APPROVED"
+      },
+      "ids": {
+        "orderId": "8UN02957XE984330H",
+        "refundIds": []
+      },
+      "refunds": [],
+      "replayed": false,
+      "debugIds": [
+        "f5105381e0dbd",
+        "f3315471d348d"
+      ],
+      "verifiedBy": "GET /v2/checkout/orders/{id}"
+    },
+    {
+      "step": "capture",
+      "at": "2026-11-12T13:49:41.382Z",
+      "ms": 1690,
+      "state": "CAPTURE_COMPLETED",
+      "paypalStatus": {
+        "order": "COMPLETED",
+        "capture": "COMPLETED"
+      },
+      "ids": {
+        "orderId": "8UN02957XE984330H",
+        "captureId": "8VB78669VP961552M",
+        "refundIds": []
+      },
+      "captured": {
+        "currency": "SEK",
+        "minor": 123450
+      },
+      "refunds": [],
+      "replayed": false,
+      "debugIds": [
+        "f5105381e0dbd",
+        "f3315471d348d",
+        "f123967ab5f64"
+      ],
+      "requestId": "681bc1bc-caad-5b9e-a3f6-d300339aa02d"
+    },
+    {
+      "step": "capture.get",
+      "at": "2026-11-12T13:49:42.171Z",
+      "ms": 789,
+      "ids": {
+        "captureId": "8VB78669VP961552M"
+      },
+      "status": "COMPLETED",
+      "amount": {
+        "currency": "SEK",
+        "minor": 123450
+      },
+      "invoiceMatches": true,
+      "debugIds": [
+        "f69207536edca"
+      ]
+    },
+    {
+      "step": "capture.replay",
+      "at": "2026-11-12T13:49:43.353Z",
+      "ms": 1182,
+      "requestId": "681bc1bc-caad-5b9e-a3f6-d300339aa02d",
+      "replayed": true,
+      "sameCapture": true,
+      "ids": {
+        "captureId": "8VB78669VP961552M"
+      },
+      "debugIds": [
+        "f902669baaf90"
+      ]
+    },
+    {
+      "step": "refund.partial",
+      "at": "2026-11-12T13:49:45.553Z",
+      "ms": 2200,
+      "state": "REFUND_COMPLETED",
+      "paypalStatus": {
+        "order": "COMPLETED",
+        "capture": "COMPLETED"
+      },
+      "ids": {
+        "orderId": "8UN02957XE984330H",
+        "captureId": "8VB78669VP961552M",
+        "refundIds": [
+          "7BM1078719564712J"
+        ]
+      },
+      "captured": {
+        "currency": "SEK",
+        "minor": 123450
+      },
+      "refunds": [
+        {
+          "id": "7BM1078719564712J",
+          "status": "COMPLETED",
+          "amount": {
+            "currency": "SEK",
+            "minor": 20000
+          }
+        }
+      ],
+      "replayed": false,
+      "debugIds": [
+        "f3315471d348d",
+        "f123967ab5f64",
+        "f5024739ad861"
+      ],
+      "requestId": "357875d9-5dcf-5d09-96f4-a59d4016d413",
+      "requested": {
+        "currency": "SEK",
+        "minor": 20000
+      }
+    },
+    {
+      "step": "refund.get",
+      "at": "2026-11-12T13:49:46.535Z",
+      "ms": 983,
+      "ids": {
+        "refundId": "7BM1078719564712J"
+      },
+      "status": "COMPLETED",
+      "amount": {
+        "currency": "SEK",
+        "minor": 20000
+      },
+      "debugIds": [
+        "f742631c8d396"
+      ]
+    },
+    {
+      "step": "order.get.final",
+      "at": "2026-11-12T13:49:47.135Z",
+      "ms": 599,
+      "state": "REFUND_COMPLETED",
+      "paypalStatus": {
+        "order": "COMPLETED",
+        "capture": "PARTIALLY_REFUNDED"
+      },
+      "ids": {
+        "orderId": "8UN02957XE984330H",
+        "captureId": "8VB78669VP961552M",
+        "refundIds": [
+          "7BM1078719564712J"
+        ]
+      },
+      "captured": {
+        "currency": "SEK",
+        "minor": 123450
+      },
+      "refunds": [
+        {
+          "id": "7BM1078719564712J",
+          "status": "COMPLETED",
+          "amount": {
+            "currency": "SEK",
+            "minor": 20000
+          }
+        }
+      ],
+      "replayed": false,
+      "debugIds": [
+        "f123967ab5f64",
+        "f5024739ad861",
+        "f5572085a3e7e"
+      ],
+      "verifiedBy": "GET /v2/checkout/orders/{id}",
+      "lastFetchedAt": "2026-11-12T13:49:47.135Z"
+    },
+    {
+      "step": "capture.get.final",
+      "at": "2026-11-12T13:49:47.830Z",
+      "ms": 695,
+      "ids": {
+        "captureId": "8VB78669VP961552M"
+      },
+      "status": "PARTIALLY_REFUNDED",
+      "amount": {
+        "currency": "SEK",
+        "minor": 123450
+      },
+      "debugIds": [
+        "f5572085e74a3"
+      ]
+    }
+  ]
+}
