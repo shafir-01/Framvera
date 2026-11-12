@@ -17,7 +17,7 @@ Framvera turns "500 promotional kits by Friday under 55,000 kr" into a signed se
 
 A buyer needs one outcome that several independent businesses must build together: print the inserts, pack the boxes, assemble the kits, deliver them. Each supplier publishes its own price, capacity, minimum order and working hours. Searching catalogues cannot help when the answer is "no combination of what is on offer works", because the workable deal exists only after someone works out how the suppliers could combine and what each would have to give up.
 
-Take the flagship market in this repository: 27 actors across printing, sourcing, assembly, packaging and delivery, and a buyer who wants 500 kits ready by Friday 12:00 for at most 55,000 kr. Every combination of the published offers breaks at least one hard limit, and the solver names 14 conditions that cannot hold together. One cheap assembler claims room for 500 kits while 450 are already booked, and its description carries an instruction aimed at automated buyers; the claim is checked against the record and the text is treated as data. Framvera then finds three changes (one assembler works two hours later, two carriers share a van), asks the suppliers, and the order becomes possible at 52,600 kr. Framvera then does the work that nobody did:
+Take the flagship market in this repository: 27 actors across printing, sourcing, assembly, packaging and delivery, and a buyer who wants 500 kits ready by Friday 12:00 for at most 55,000 kr. Every combination of the published offers breaks at least one hard limit, and the solver names 14 conditions that cannot hold together. One cheap assembler claims room for 500 kits while 450 are already booked, and its description carries an instruction aimed at automated buyers; the claim is checked against the record and the text is treated as data. Framvera then finds three changes (one assembler works two hours later, two carriers share a van), asks the suppliers, and the order becomes possible at 52,600 kr. When the carrier Lindqvists Transport then withdraws, recovery keeps the four unaffected obligations, adds a shared van between Roslagens Åkeri and Mälardalens Budservice and commits an amended agreement (version 2) at 54,200 kr. A cheaper re-plan at 53,200 kr is refused because it would cancel an accepted obligation (Nacka Emballage). Framvera then does the work that nobody did:
 
 1. **Proves the impossibility.** The solver returns a minimal set of constraints that cannot hold together, each with a plain-sentence origin, such as "Assembly at this supplier must end by Thursday 18:00".
 2. **Searches for the smallest change.** It finds the fewest negotiable adjustments across all suppliers and the buyer that make a plan exist, ranked by estimated cost.
@@ -58,7 +58,7 @@ Take the flagship market in this repository: 27 actors across printing, sourcing
 **Explore**
 - Scenario gallery: the flagship, an exhibition market, a circular-resource market and any seed you type; the interface shows whether a market is feasible as published, repairable or impossible, with the proof when it is impossible.
 - Seller terminal: a person can answer as one supplier from a seat link; the answer is bound to the exact terms hash and recorded as given by a person.
-- Constraint surgery: relax a limit yourself and re-solve in the browser to see what it would unlock.
+- Constraint surgery: relax a limit yourself and the real solver (HiGHS compiled to WebAssembly) re-solves in your browser, about 0.2 seconds per what-if, to show what it would unlock.
 - Standby options: priced backup capacity for the obligations most likely to fail, valued against expected loss with planner estimates labelled as such.
 - Market mechanisms on the same state: reverse auction, exchange cycles and demand aggregation, each with its own verifier.
 - Evidence trail and replay: every event with its source and the events that caused it.
@@ -236,6 +236,8 @@ npm test                       # all packages and the API
 npx vitest run packages/solver # one package
 ```
 
+A separate adversarial suite attacks the product from the outside: forged and replayed approval tokens, compiler output that tries to raise a spending limit, injection text in supplier descriptions, payment timeouts and duplicate webhooks, joint offers that double-book capacity, and randomly generated worlds checked for plans that fail verification. Run it with `npx vitest run --config tests/adversarial/vitest.config.ts` (about three minutes; it uses the real solver). It is kept out of `npm test` so that a finding under repair does not block the main suite.
+
 Property tests (fast-check) cover exact money arithmetic, and the PayPal tests cover idempotent replay, timeouts with unknown outcomes, refund bounds and webhook verification against a fake gateway. The API tests drive a full session through the HTTP layer, including the refusals: a missing, forged, tampered or replayed approval token, a wrong amount, a refund without its own approval, and a withheld spending scope.
 
 ## Benchmark
@@ -248,7 +250,29 @@ Strategies compared: take the offers as published; solve for the cheapest plan; 
 npm run bench -- --seeds 100
 ```
 
-Results, with denominators, confidence intervals and every strategy's false-claim count, are written to `evaluation/SUMMARY.md` and `evaluation/results.json` by the command above. Read the numbers there; this page does not restate them.
+### Results
+
+30 held-out seeds per family (feasible 910000 to 910029, salvageable 1910000 to 1910029, impossible 2910000 to 2910029), generated 2026-11-12, HiGHS 1.15. A success needs the independent verifier to pass, the budget to hold and the hidden real capacity to hold. Intervals are Wilson 95%. Full tables, including questions asked, acceptance rates, cost against the hindsight bound and solve times, are in `evaluation/SUMMARY.md`; one row per world and strategy is in `evaluation/results.json`.
+
+Salvageable worlds (infeasible as published, a negotiable change exists), verified feasible out of 30:
+
+| Strategy | Verified feasible | False claims |
+|---|---|---|
+| Framvera (full) | 30/30 (95% CI 88.6% to 100%) | 0/30 |
+| Hindsight oracle (upper bound for the same candidate set) | 30/30 | 0/30 |
+| Framvera without coalitions | 19/30 (63.3%) | 0/19 |
+| Random relaxations | 4/30 (13.3%) | 0/4 |
+| Uniform heuristic negotiation | 1/30 (3.3%) | 0/1 |
+| Conventional optimizer (published offers only) | 0/30 | none claimed |
+| Direct procurement | 0/30 | 1/1 claimed plans were false |
+
+Framvera asked 2.0 questions per world on average, and suppliers accepted 59 of 61 proposals. Coalitions are what separates 30/30 from 19/30 here. Without value-of-information selection and without claim checks the salvageable result is also 30/30, so these two components show no gain on this generator; the claim checks matter in the flagship, where a cheap assembler's capacity claim is contradicted, and in the direct-procurement baseline, which made 6 of 7 false feasibility claims on feasible worlds.
+
+Impossible worlds: 0 of 30 claimed solved by Framvera and by every other strategy; no strategy made a false claim. Feasible worlds: Framvera, the optimizer and the heuristics all verify 30/30; direct procurement verifies 1/30.
+
+Recovery after a withheld supplier shock succeeded in 6 of 30 attempts on salvageable worlds for Framvera and for the oracle alike, and in 17 of 30 on feasible worlds; the remainder had no permissible recovery. The flagship recovers (below).
+
+Limits: one generator, synthetic supplier policies, and the referee and strategies share a process with a code-level boundary. The direct-procurement baseline uses its own earliest-start rule, and a different convention would change its numbers.
 
 ## Deployment
 

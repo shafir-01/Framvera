@@ -33,8 +33,8 @@ A walk through the flagship market, for a live demo or for a reviewer trying the
 ## Act IV: Break and recover
 
 1. Press **Break the deal**. A supplier withdraws after accepting. The affected obligation is hatched in the schedule.
-2. Framvera finds a recovery that keeps every accepted promise it can. **What changed** shows only the replaced obligation and the extra cost.
-3. **Rejected plans** shows a cheaper plan that was refused because it would have changed an accepted obligation, with the reason.
+2. Framvera finds a recovery that keeps the four unaffected obligations, adds a shared van between Roslagens Åkeri and Mälardalens Budservice and commits an amended agreement (version 2) at 54 200 kr. **What changed** shows only the replaced obligation and the extra cost.
+3. **Rejected plans** shows a cheaper re-plan at 53 200 kr that was refused because it would cancel an accepted obligation (Nacka Emballage), with the reason.
 4. If the withdrawn supplier had been paid, the refund is offered here and needs its own approval.
 
 ## Try your own
