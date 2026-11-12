@@ -24,13 +24,19 @@ export function deriveOffer(world: World, id: string, concessions: string[] = []
   const byId = new Map(world.offers.map((o) => [o.id, o]));
   const members = shape.members.map((m) => byId.get(m));
   if (members.some((m) => !m)) return null;
+  let joint: Offer;
   try {
-    const joint = composeJoint(members as Offer[], id, world.createdAt);
-    if (joint.id !== id) return null;
-    return { ...joint, derivedFrom: { concessions, coalition: id } };
+    joint = composeJoint(members as Offer[], id, world.createdAt);
   } catch {
     return null;
   }
+  if (joint.id !== id) {
+    // The id names the roles: the first member provides the capacity, the second runs the job in its window.
+    const [vehicle, crew] = members as Offer[];
+    if (!id.startsWith('joint:shared:') || !vehicle || !crew || vehicle.capacity <= crew.capacity) return null;
+    joint = { ...joint, id, actor: crew.actor, capacity: vehicle.capacity, ratePerHour: crew.ratePerHour, window: { ...crew.window }, handoffHours: crew.handoffHours };
+  }
+  return { ...joint, derivedFrom: { concessions, coalition: id } };
 }
 
 /** The pairing composeJoint would name for two offers, or null when it adds nothing over the larger one. */

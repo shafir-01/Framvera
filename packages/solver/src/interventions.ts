@@ -154,7 +154,7 @@ export async function findInterventions(world: World, intent: Intent, opts: Inte
 function concessionFor(c: Compiled, s: Slack, values: Record<string, number>): Concession {
   const v = Math.max(0, values[s.slack] ?? 0);
   const units = Math.max(1, Math.ceil(v - 1e-6));
-  const minutes = Math.max(1, Math.ceil(v * 60 - 1e-6));
+  const minutes = Math.max(1, Math.ceil(v * 60 - 0.01));
   const currency = c.intent.budget.currency;
   const m = (minor: number): Money => ({ currency, minor: Math.max(0, Math.round(minor)) });
   const make = (from: number | string, to: number | string, estimate: number, rationale: string): Concession => {

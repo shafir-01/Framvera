@@ -453,16 +453,22 @@ export function compile(world: World, intent: Intent, opts: CompileOptions = {})
     const estimate = Math.round(shape.members.reduce((acc, id) => acc + ESTIMATES.jointPerMember * (byOffer.get(id)?.offer.setupFee.minor ?? 0), 0));
     return [{ coalition, offer: co, members: shape.members, estimate }];
   });
+  // A member offer's capacity serves one job at a time: its own order or one joint offer that uses it.
+  const sharing = new Map<string, CompiledOffer[]>();
   for (const co of offers) {
     const shape = parseCoalition(co.offer.id);
     if (!shape || !co.usable) continue;
-    const names = shape.members.map((id) => name(byOffer.get(id)?.offer.actor ?? id)).join(' and ');
-    const id = ref(`exclusive:${shape.id}`, 'exclusive-resource', `${names} cannot take separate orders while working together on this one.`, shape.id);
-    if (!on(id) || !co.possible) continue;
-    for (const memId of shape.members) {
-      const mem = byOffer.get(memId);
-      if (mem?.possible) m.addRow(id, [{ v: co.u, c: 1 }, { v: mem.u, c: 1 }], '<=', 1);
-    }
+    for (const memId of shape.members) sharing.set(memId, [...(sharing.get(memId) ?? []), co]);
+  }
+  for (const [memId, joints] of sharing) {
+    const member = byOffer.get(memId);
+    const users = [...(member?.usable ? [member] : []), ...joints];
+    if (users.length < 2) continue;
+    const who = name(member?.offer.actor ?? memId);
+    const id = ref(`exclusive:${memId}`, 'exclusive-resource', `${who}'s capacity can serve only one of these jobs: its own order or one joint offer.`, memId);
+    if (!on(id)) continue;
+    const live = users.filter((x) => x.possible);
+    if (live.length >= 2) m.addRow(id, live.map((x) => ({ v: x.u, c: 1 })), '<=', 1);
   }
 
   const stages: CompiledStage[] = world.stages.map((st, k) => {

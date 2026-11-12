@@ -63,10 +63,14 @@ export function verifyPlan(plan: Plan, world: World, intent: Intent, opts: Verif
   const seen = new Map<string, number>();
   for (const a of allocs) seen.set(a.offer, (seen.get(a.offer) ?? 0) + 1);
   const dup = [...seen].filter(([, n]) => n > 1).map(([id]) => `Offer ${id} is allocated ${seen.get(id)} times.`);
+  const users = new Map<string, string[]>();
   for (const a of allocs) {
-    for (const member of jointMembers(a.offer) ?? []) {
-      if (seen.has(member)) dup.push(`${nameOf(offers.get(member)!.actor)} is booked both alone and in a joint offer.`);
-    }
+    for (const member of jointMembers(a.offer) ?? []) users.set(member, [...(users.get(member) ?? []), a.offer]);
+  }
+  for (const [member, jobs] of users) {
+    const who = nameOf(offers.get(member)?.actor ?? member);
+    if (seen.has(member)) dup.push(`${who} is booked both alone and in a joint offer.`);
+    else if (new Set(jobs).size > 1) dup.push(`${who}'s capacity is promised to ${new Set(jobs).size} joint offers at once.`);
   }
   add('exclusive', dup, 'No capacity is promised twice.');
 

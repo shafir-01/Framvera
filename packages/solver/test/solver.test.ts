@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { Intent, World } from '@framvera/contracts';
-import { applyConcessions, explainInfeasible, findInterventions, solve, verifyPlan } from '../src/index.ts';
+import { applyCoalition, compile, applyConcessions, explainInfeasible, findInterventions, solve, verifyPlan } from '../src/index.ts';
 import { statusWith } from './helpers.ts';
 import { at, kitsIntent, kitsWorld, sek } from './fixtures.ts';
 
@@ -143,6 +143,30 @@ describe('applyConcessions', () => {
     const changed = next.world.offers.find((o) => o.id === 'o-asm-big')!;
     expect(changed.version).toBe(2);
     expect(changed.derivedFrom!.concessions).toEqual([ivs[0]!.concessions[0]!.id]);
+  });
+
+  it('lets one member offer serve only one job: its own order or one joint offer', () => {
+    const w = kitsWorld();
+    w.actors.push({ id: 'a-van2', name: 'Second Crew', kind: 'supplier', city: 'Stockholm', description: '', active: true });
+    const solna = w.offers.find((o) => o.id === 'o-asm-solna')!;
+    w.offers.push({ ...solna, id: 'o-asm-solna2', actor: 'a-van2', capacity: 100 });
+    w.offers = w.offers.map((o) => (o.id === 'o-asm-solna' ? { ...o, capacity: 100 } : o));
+    const joined = applyCoalition(applyCoalition(w, 'joint:shared:o-asm-kista>o-asm-solna'), 'joint:shared:o-asm-kista>o-asm-solna2');
+    const c = compile(joined, kitsIntent());
+    const row = c.model.rows.find((r) => r.group === 'exclusive:o-asm-kista')!;
+    const users = ['o-asm-kista', 'joint:shared:o-asm-kista>o-asm-solna', 'joint:shared:o-asm-kista>o-asm-solna2'].map((id) => c.offers.find((o) => o.offer.id === id)!.u);
+    expect(row.terms.map((t) => t.v).sort()).toEqual(users.sort());
+    expect(row.sense).toBe('<=');
+    expect(row.rhs).toBe(1);
+  });
+
+  it('sells every quantity at exactly the agreed unit price', () => {
+    const w = kitsWorld();
+    const next = applyConcessions(w, kitsIntent(), [
+      { id: 'p', target: { kind: 'offer', offer: 'o-print-a', field: 'unitPrice' }, from: 9999, to: 1100, estimate: sek(0), rationale: '' },
+    ]);
+    const tiers = next.world.offers.find((o) => o.id === 'o-print-a')!.tiers;
+    expect(tiers).toEqual([{ minQty: 0, unit: sek(11) }]);
   });
 
   it('applies a supplier counter on any field but refuses joint work from an offer not open to it', () => {

@@ -81,6 +81,23 @@ describe('verifyPlan', async () => {
     expect(v.checks.find((c) => c.id === 'exclusive')!.ok).toBe(false);
   });
 
+  it('rejects one member’s capacity promised to two joint offers at once', () => {
+    const w = structuredClone(world);
+    w.actors.push({ id: 'a-van2', name: 'Second Driver', kind: 'logistics', city: 'Stockholm', description: '', active: true });
+    const solna = w.offers.find((o) => o.id === 'o-asm-solna')!;
+    w.offers.push({ ...solna, id: 'o-asm-solna2', actor: 'a-van2', capacity: 100 });
+    w.offers = w.offers.map((o) => (o.id === 'o-asm-solna' ? { ...o, capacity: 100 } : o));
+    const a = applyCoalition(applyCoalition(w, 'joint:shared:o-asm-kista>o-asm-solna'), 'joint:shared:o-asm-kista>o-asm-solna2');
+    const p = copy();
+    p.worldVersion = a.version;
+    p.allocations = p.allocations.filter((x) => x.stage !== 'assemble');
+    for (const id of ['joint:shared:o-asm-kista>o-asm-solna', 'joint:shared:o-asm-kista>o-asm-solna2']) {
+      const d = a.offers.find((o) => o.id === id)!;
+      p.allocations.push({ offer: id, actor: d.actor, stage: 'assemble', qty: 250, start: d.window.start, finish: d.window.end, cost: { currency: 'SEK', minor: priceAt(d, 250) } });
+    }
+    expect(verifyPlan(p, a, intent).checks.find((c) => c.id === 'exclusive')!.ok).toBe(false);
+  });
+
   it('rejects a joint offer when a member supplier has left', () => {
     const w = structuredClone(world);
     const id = 'joint:shared:o-asm-kista>o-asm-solna';

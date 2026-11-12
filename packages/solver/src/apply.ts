@@ -44,8 +44,10 @@ export function applyConcessions(world: World, intent: Intent, concessions: Conc
         o.setupFee = { ...o.setupFee, minor: Math.max(0, Math.round(asNumber(c.to, 'setupFee'))) };
         break;
       case 'unitPrice': {
-        const ratio = asNumber(c.to, 'unitPrice') / asNumber(c.from, 'unitPrice');
-        o.tiers = o.tiers.map((t) => ({ ...t, unit: { ...t.unit, minor: Math.max(0, Math.round(t.unit.minor * ratio)) } }));
+        // The supplier agreed to one unit price; every quantity is sold at exactly that price.
+        const agreed = Math.max(0, Math.round(asNumber(c.to, 'unitPrice')));
+        const currency = o.tiers[0]?.unit.currency ?? o.setupFee.currency;
+        o.tiers = [{ minQty: 0, unit: { currency, minor: agreed } }];
         break;
       }
       case 'windowStart':
