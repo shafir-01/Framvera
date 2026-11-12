@@ -1,6 +1,7 @@
 /// <reference lib="webworker" />
 import type { Concession, InfeasibleCore, Intent, Intervention, SolveReport, Verification, World } from '@framvera/contracts';
-import { applyConcessions, compile, explainInfeasible, findInterventions, solve, toLP, verifyPlan } from '@framvera/solver';
+import { compile, explainInfeasible, findInterventions, solve, toLP, verifyPlan } from '@framvera/solver';
+import { applyWhatIf } from './levers.ts';
 import type { ExplainOptions, InterventionOptions, SolveOptions } from '@framvera/solver';
 import loadHighs from 'highs';
 import wasmUrl from 'highs/runtime?url';
@@ -57,7 +58,7 @@ async function feasibility(world: World, intent: Intent, timeLimitMs: number): P
 
 async function handle(req: WorkerRequest): Promise<WorkerResult> {
   const t0 = performance.now();
-  const { world, intent } = req.concessions?.length ? applyConcessions(req.world, req.intent, req.concessions) : req;
+  const { world, intent } = req.concessions?.length ? applyWhatIf(req.world, req.intent, req.concessions) : req;
   const ms = () => Math.round((performance.now() - t0) * 10) / 10;
   switch (req.op) {
     case 'feasible':

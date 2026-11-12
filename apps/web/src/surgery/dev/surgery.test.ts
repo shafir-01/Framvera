@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import type { InfeasibleCore, Intent, Intervention, World } from '@framvera/contracts';
 import { applyConcessions, solve } from '@framvera/solver';
 import { flagshipWorld } from '@framvera/market';
-import { allLevers, deltaFor, expressible, jointLevers, leversFor, leverValue, suppliersAsked, tightest, toConcessions, type Lever } from '../levers.ts';
+import { allLevers, applyWhatIf, deltaFor, expressible, jointLevers, leversFor, leverValue, suppliersAsked, tightest, toConcessions, type Lever } from '../levers.ts';
 import { makeBranch } from '../branch.ts';
 import data from './flagship.json';
 
@@ -43,7 +43,7 @@ describe('levers', () => {
     expect(cs[0]!.target).toEqual({ kind: 'intent', field: 'budget' });
     expect(cs[0]!.to).toBe(intent.budget.minor + 300_000);
     expect(suppliersAsked(cs, world)).toEqual([]);
-    expect(applyConcessions(world, intent, cs).intent.budget.minor).toBe(intent.budget.minor + 300_000);
+    expect(applyWhatIf(world, intent, cs).intent.budget.minor).toBe(intent.budget.minor + 300_000);
     expect(leverValue(map.get('intent:deadline')!, 90)).toBe(new Date(Date.parse(intent.deadline) + 90 * 60_000).toISOString());
   });
 

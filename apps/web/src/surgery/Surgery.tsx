@@ -1,12 +1,11 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { Concession, ConstraintRef, InfeasibleCore, Intent, Intervention, SolveReport, Verification, World } from '@framvera/contracts';
-import { applyConcessions } from '@framvera/solver';
 import { SourceTag } from '../components/ui.tsx';
 import { count, money, weekday } from '../lib/format.ts';
 import { LABELS, MAX_BRANCHES, makeBranch, type SurgeryBranch } from './branch.ts';
 import { Engine, scanFrontier, type Frontier } from './engine.ts';
 import { LeverControl } from './LeverControl.tsx';
-import { allLevers, changeItems, expressible, jointLevers, leversFor, tightest, toConcessions, type Lever } from './levers.ts';
+import { allLevers, applyWhatIf, changeItems, expressible, jointLevers, leversFor, tightest, toConcessions, type Lever } from './levers.ts';
 import { Multiverse } from './Multiverse.tsx';
 import './surgery.css';
 
@@ -113,7 +112,7 @@ export function Surgery({ world, intent, core, interventions, onCommitBranch }: 
   const concessions = useMemo(() => concessionsOf(deltas), [concessionsOf, deltas]);
   const applied = useMemo(() => {
     try {
-      return applyConcessions(world, intent, concessions);
+      return applyWhatIf(world, intent, concessions);
     } catch {
       return { world, intent };
     }

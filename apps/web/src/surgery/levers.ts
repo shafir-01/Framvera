@@ -1,5 +1,5 @@
 import type { Concession, ConstraintRef, Intent, Intervention, Money, NegotiableField, Offer, Plan, World } from '@framvera/contracts';
-import { ESTIMATES, MAX_PRICE_CUT, stageDemand } from '@framvera/solver';
+import { applyConcessions, ESTIMATES, MAX_PRICE_CUT, stageDemand } from '@framvera/solver';
 import { concessionSentence, hours, money, singular, weekday } from '../lib/format.ts';
 import { latestOffers } from '../lib/world.ts';
 
@@ -465,4 +465,19 @@ const SHORT: Record<LeverField, string> = {
 /** Label for a lever shown under a card that already names its supplier. */
 export function shortLabel(l: Lever): string {
   return l.field === 'unitPrice' ? `Price per ${singular(l.stageUnit)}` : SHORT[l.field];
+}
+
+/**
+ * Applies a what-if. Moving the buyer's own budget or deadline is the buyer's decision in this view,
+ * so those moves widen what the buyer allows instead of being refused; supplier terms keep every bound.
+ */
+export function applyWhatIf(world: World, intent: Intent, concessions: Concession[]): { world: World; intent: Intent } {
+  let budgetMinor = intent.negotiable.budgetMinor ?? 0;
+  let deadlineHours = intent.negotiable.deadlineHours ?? 0;
+  for (const c of concessions) {
+    if (c.target.kind !== 'intent') continue;
+    if (c.target.field === 'budget') budgetMinor = Math.max(budgetMinor, Math.round(Number(c.to)) - intent.budget.minor);
+    else deadlineHours = Math.max(deadlineHours, (Date.parse(String(c.to)) - Date.parse(intent.deadline)) / 3_600_000);
+  }
+  return applyConcessions(world, { ...intent, negotiable: { ...intent.negotiable, budgetMinor, deadlineHours } }, concessions);
 }

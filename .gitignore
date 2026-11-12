@@ -10,3 +10,4 @@ playwright-report/
 *.db
 *.db-*
 .cache/
+tests/e2e/dist/
