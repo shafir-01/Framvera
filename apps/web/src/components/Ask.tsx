@@ -54,7 +54,7 @@ export function Ask() {
       <section className="ask" data-compact="true" aria-labelledby="objective">
         {s.scenario ? <div className="eyebrow">{s.scenario}</div> : null}
         <h1 className="display" id="objective">
-          {intent?.text ?? s.draft.text}
+          {s.scenario ? (intent?.text ?? s.draft.text) : s.draft.text}
         </h1>
         <div className="ask-foot" style={{ marginTop: 0, marginBottom: 18 }}>
           {!intent ? (

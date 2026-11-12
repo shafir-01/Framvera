@@ -17,7 +17,7 @@ import {
   type RecoverResult,
 } from './api.ts';
 
-export type Step = 'market' | 'compile' | 'analyze' | 'invent' | 'negotiate' | 'commit' | 'pay' | 'capture' | 'refresh' | 'refund' | 'disrupt' | 'recover';
+export type Step = 'market' | 'compile' | 'analyze' | 'invent' | 'negotiate' | 'commit' | 'pay' | 'capture' | 'refresh' | 'refund' | 'disrupt' | 'recover' | 'recommit';
 export type ServerPhase = 'checking' | 'waking' | 'ready' | 'down';
 
 export interface Session {
@@ -28,6 +28,7 @@ export interface Session {
   status?: ApiStatus;
   statusError?: string;
   market?: MarketCreated;
+  prepared?: MarketCreated;
   compiled?: CompiledIntent;
   intent?: Intent;
   analysis?: AnalyzeResult;
@@ -39,6 +40,7 @@ export interface Session {
   payments: Record<Id, PaymentIntent>;
   disruption?: DisruptResult;
   recovery?: RecoverResult;
+  recoveryCommitted?: boolean;
   events: MarketEvent[];
   busy?: Step;
   busyKey?: string;
@@ -63,7 +65,7 @@ function reducer(s: Session, a: Action): Session {
     case 'error':
       return { ...s, busy: undefined, busyKey: undefined, error: { step: a.step, message: a.message } };
     case 'reset':
-      return { draft: s.draft, request: s.request, scenario: s.scenario, server: s.server, status: s.status, statusError: s.statusError, events: [], payments: {}, run: s.run + 1 };
+      return { draft: s.draft, request: s.request, scenario: s.scenario, server: s.server, status: s.status, statusError: s.statusError, prepared: s.prepared, events: [], payments: {}, run: s.run + 1 };
     case 'payment':
       return { ...s, payments: { ...s.payments, [a.payment.id]: a.payment } };
     case 'events': {
@@ -118,6 +120,7 @@ export interface Actions {
   refreshPayment(payment: Id): Promise<void>;
   refund(payment: Id): Promise<void>;
   breakDeal(): Promise<void>;
+  commitRecovery(): Promise<void>;
   reset(): void;
   retryStatus(): void;
 }
@@ -134,6 +137,14 @@ const StoreCtx = createContext<Ctx | null>(null);
 export const errorText = (e: unknown) => (e instanceof ApiError ? e.message : e instanceof Error ? e.message : 'Something went wrong.');
 const pause = (ms: number) => new Promise((r) => setTimeout(r, ms));
 const reduced = () => typeof matchMedia !== 'undefined' && matchMedia('(prefers-reduced-motion: reduce)').matches;
+
+/** The first screen's explicit budget and deadline, stated in words the request parser reads before any weekday. */
+function withFields(d: IntentDraft): string {
+  const p = new Intl.DateTimeFormat('en-CA', { timeZone: 'Europe/Stockholm', year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', hour12: false }).formatToParts(new Date(d.deadline));
+  const g = (t: string) => p.find((x) => x.type === t)?.value ?? '00';
+  const kr = Math.round(d.budget.minor / 100);
+  return `${d.text.trim().replace(/[.\s]+$/, '')}. Deadline ${g('year')}-${g('month')}-${g('day')} ${g('hour') === '24' ? '00' : g('hour')}:${g('minute')}. Budget ${kr} kr.`;
+}
 
 export function StoreProvider({ api, initialDraft, children }: { api: Api; initialDraft: IntentDraft; children: ReactNode }) {
   const [s, dispatch] = useReducer(reducer, { draft: initialDraft, request: { flagship: true }, server: 'checking', events: [], payments: {}, run: 0 });
@@ -171,6 +182,26 @@ export function StoreProvider({ api, initialDraft, children }: { api: Api; initi
   }, [api]);
 
   useEffect(loadStatus, [loadStatus]);
+
+  const wantsPrepared = s.server === 'ready' && !s.market && !s.prepared && 'flagship' in s.request && !s.busy;
+  useEffect(() => {
+    if (!wantsPrepared) return;
+    let alive = true;
+    api
+      .createMarket({ flagship: true })
+      .then((m) => {
+        if (!alive || ref.current.market) return;
+        const d = ref.current.draft;
+        const untouched = d.text === initial.current.text && d.budget.minor === initial.current.budget.minor && d.deadline === initial.current.deadline;
+        const draft = untouched ? { text: d.text, budget: m.intent.budget, deadline: m.intent.deadline } : d;
+        if (untouched) initial.current = draft;
+        dispatch({ type: 'patch', patch: { prepared: m, draft } });
+      })
+      .catch(() => {});
+    return () => {
+      alive = false;
+    };
+  }, [api, wantsPrepared]);
 
   const marketId = s.market?.market;
   useEffect(() => {
@@ -286,9 +317,10 @@ export function StoreProvider({ api, initialDraft, children }: { api: Api; initi
         const run = ++runId.current;
         dispatch({ type: 'reset' });
         const { draft, request } = ref.current;
-        const market = await step('market', () => api.createMarket(request), run);
+        const prepared = 'flagship' in request ? ref.current.prepared : undefined;
+        const market = prepared ?? (await step('market', () => api.createMarket(request), run));
         if (!market) return;
-        dispatch({ type: 'patch', patch: { market } });
+        dispatch({ type: 'patch', patch: { market, prepared: undefined } });
         const i0 = initial.current;
         const untouched = draft.text.trim() === i0.text.trim() && draft.budget.minor === i0.budget.minor && draft.deadline === i0.deadline && 'flagship' in request;
         if (untouched) {
@@ -296,7 +328,7 @@ export function StoreProvider({ api, initialDraft, children }: { api: Api; initi
           await explore(market, market.intent, run);
           return;
         }
-        const compiled = await step('compile', () => api.compileIntent(market.market, draft), run);
+        const compiled = await step('compile', () => api.compileIntent(market.market, { ...draft, text: withFields(draft) }), run);
         if (!compiled) return;
         dispatch({ type: 'patch', patch: { compiled, intent: compiled.intent } });
         await explore(market, compiled.intent, run);
@@ -311,7 +343,7 @@ export function StoreProvider({ api, initialDraft, children }: { api: Api; initi
             market,
             intent: st.intent,
             scenario: TEMPLATE_TITLE[st.template] ?? st.template,
-            request: st.seed !== undefined ? { scenario: st.template, seed: st.seed } : { scenario: st.template },
+            request: st.seed !== undefined ? { template: st.template, seed: st.seed } : { template: st.template },
             draft: { text: st.intent.text, budget: st.intent.budget, deadline: st.intent.deadline },
           },
         });
@@ -409,8 +441,17 @@ export function StoreProvider({ api, initialDraft, children }: { api: Api; initi
         await dwell(1600);
         const recovery = await step('recover', () => api.recover(market, disruption.disruption.id));
         if (!recovery) return;
-        dispatch({ type: 'patch', patch: { recovery, agreement: recovery.agreement ?? ref.current.agreement, busy: undefined } });
+        dispatch({ type: 'patch', patch: { recovery, busy: undefined } });
         refreshEvents(market);
+      },
+      commitRecovery: async () => {
+        const cur = ref.current;
+        const rec = cur.recovery?.recovery;
+        if (!cur.market || !rec) return;
+        const r = await step('recommit', () => api.commitRecovery(cur.market!.market, rec.id));
+        if (!r) return;
+        dispatch({ type: 'patch', patch: { agreement: r.agreement, recoveryCommitted: true, busy: undefined } });
+        refreshEvents(cur.market.market);
       },
     };
   }, [api, loadStatus, settleNegotiation, step]);

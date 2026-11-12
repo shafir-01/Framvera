@@ -143,7 +143,7 @@ export function Discover() {
           </div>
           {surgery && s.market ? (
             <div style={{ marginTop: 24 }}>
-              <Surgery api={api} market={s.market.market} world={ix.world} intent={s.intent} core={core} loading="Opening the constraint editor" />
+              <Surgery api={api} market={s.market.market} world={ix.world} intent={s.intent} core={core} interventions={s.invention?.interventions} loading="Opening the constraint editor" />
             </div>
           ) : null}
         </>

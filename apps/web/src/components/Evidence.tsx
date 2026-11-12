@@ -140,7 +140,7 @@ export function Evidence({ market }: { market?: string }) {
 
   const world: World | undefined = own ? (liveWorld ?? s.market?.world) : snap?.world;
   const evs = own ? s.events : (events ?? []);
-  const agreement: Agreement | null | undefined = own ? (s.recovery?.agreement ?? s.agreement) : snap?.agreement;
+  const agreement: Agreement | null | undefined = own ? (s.agreement ?? s.recovery?.agreement) : snap?.agreement;
   const payments: PaymentIntent[] = own ? Object.values(s.payments) : (snap?.payments ?? []);
   const neg = own ? s.negotiation : snap?.run;
   const before = own ? s.analysis?.report : (neg?.before ?? undefined);

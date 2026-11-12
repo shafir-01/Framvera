@@ -1,7 +1,7 @@
 import { motion } from 'motion/react';
 import type { Id } from '@framvera/contracts';
 import { disruptionTarget, useStore } from '../store.tsx';
-import { concessionSentence, count, hours, money, weekday } from '../lib/format.ts';
+import { concessionSentence, count, hours, money, plainReason, weekday } from '../lib/format.ts';
 import { ErrorNote, SourceTag, Waiting } from './ui.tsx';
 import { Schedule } from '../mounts.tsx';
 import { PlanTable } from './Agreement.tsx';
@@ -89,7 +89,7 @@ export function Adapt() {
               <span>
                 <strong className="num">{money(rec.extraCost, { sign: rec.extraCost.minor > 0 })}</strong> extra
               </span>
-              <span>{rec.slipHours ? `${hours(rec.slipHours)} later` : readyAt && onTime ? `Ready ${weekday(readyAt)}, on time` : 'No delay'}</span>
+              <span>{rec.slipHours ? `${hours(rec.slipHours)} later${onTime ? ', still on time' : ', after the deadline'}` : readyAt && onTime ? `Ready ${weekday(readyAt)}, on time` : 'No delay'}</span>
             </p>
           ) : null}
 
@@ -108,16 +108,54 @@ export function Adapt() {
             </div>
           ) : null}
 
+          {rec.feasible ? (
+            <div className="approve">
+              <div className="approve-text">
+                {s.recoveryCommitted ? (
+                  <>
+                    <strong>New terms committed.</strong> Version {ag.version} replaces the old one; unchanged promises keep their payments. Pay any new supplier under Payment.
+                  </>
+                ) : (
+                  <>
+                    <strong>Approve the new terms to commit them.</strong> Only the changed work is renegotiated.
+                  </>
+                )}
+              </div>
+              {s.recoveryCommitted ? (
+                <a className="btn btn-quiet" href="#commit" onClick={(e) => { e.preventDefault(); document.getElementById('commit')?.scrollIntoView({ block: 'start' }); }}>
+                  Go to payment
+                </a>
+              ) : (
+                <button className="btn btn-primary" onClick={() => void act.commitRecovery()} disabled={s.busy === 'recommit'}>
+                  {s.busy === 'recommit' ? 'Committing…' : 'Approve and commit'}
+                </button>
+              )}
+              {s.error?.step === 'recommit' ? (
+                <div style={{ flexBasis: '100%' }}>
+                  <ErrorNote title="The new terms were not committed.">{s.error.message}</ErrorNote>
+                </div>
+              ) : null}
+            </div>
+          ) : null}
+
           {rec.rejected.length || cheaper.length ? (
             <div style={{ marginTop: 28 }}>
               <div className="h3">Rejected plans</div>
               <ul className="rejected">
-                {rec.rejected.map((r, i) => (
-                  <li key={`r${i}`}>
-                    <div className="r-what">{r.description}</div>
-                    <div className="r-why">{r.reason}</div>
-                  </li>
-                ))}
+                {[...rec.rejected]
+                  .sort((a, b) => (a.extraCost?.minor ?? Infinity) - (b.extraCost?.minor ?? Infinity))
+                  .map((r, i) => {
+                    const diff = r.extraCost ? chosenExtra - r.extraCost.minor : 0;
+                    return (
+                      <li key={`r${i}`}>
+                        <div className="r-what">
+                          {r.description}
+                          {r.extraCost ? <span className="r-cost num">{diff > 0 ? ` · ${money({ currency, minor: diff })} cheaper` : ` · ${money(r.extraCost, { sign: r.extraCost.minor > 0 })}`}</span> : null}
+                        </div>
+                        <div className="r-why">{plainReason(r.reason)}</div>
+                      </li>
+                    );
+                  })}
                 {cheaper
                   .filter((c) => !rec.rejected.some((r) => r.description === c.description))
                   .map((c, i) => (
@@ -125,7 +163,7 @@ export function Adapt() {
                       <div className="r-what">
                         {c.description} ({money({ currency, minor: chosenExtra - c.extraCostMinor })} cheaper)
                       </div>
-                      <div className="r-why">{c.reasons.join(' ')}</div>
+                      <div className="r-why">{plainReason(c.reasons.join(' '))}</div>
                     </li>
                   ))}
               </ul>
@@ -135,7 +173,7 @@ export function Adapt() {
           {!rec.feasible ? (
             <div style={{ marginTop: 28 }}>
               <ErrorNote title={rec.core?.summary ?? 'Every recovery breaks an accepted promise or a hard limit.'}>
-                {rec.core?.constraints.map((c) => `${KIND_LABEL[c.kind] ?? c.kind}: ${c.text}`).join(' ')}
+                {rec.core?.constraints.map((c) => `${KIND_LABEL[c.kind] ?? c.kind}: ${plainReason(c.text)}`).join(' ')}
               </ErrorNote>
               {rec.concessionsNeeded?.length ? (
                 <div style={{ marginTop: 16 }}>

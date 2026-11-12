@@ -1834,3 +1834,9 @@ dialog.drawer[open] {
   letter-spacing: -0.02em;
   margin-right: 4px;
 }
+
+.rejected .r-cost {
+  text-decoration: none;
+  display: inline-block;
+  color: var(--ink-2);
+}

@@ -31,6 +31,7 @@ export function fixtureApi(): Api {
     if (path.endsWith('/invent')) return [200, fxInvent, 1100];
     if (path.endsWith('/negotiate')) return (advance('negotiate'), [200, fxNegotiate, 1600]);
     if (path.endsWith('/verify')) return [200, fxNegotiate.verification, 300];
+    if (path.endsWith('/recover/commit')) return [200, { agreement: { ...fxRecover.amendment, state: 'COMMITTED' }, recovery: fxRecover, changed: ['ob_6'] }, 700];
     if (path.endsWith('/commit')) return (advance('commit'), [201, fxAgreement, 700]);
     if (path.endsWith('/approve-payment')) {
       if (!paypalOn) return [503, { error: { code: 'payments_unconfigured', message: 'Payments are not configured on this server' } }, 200];

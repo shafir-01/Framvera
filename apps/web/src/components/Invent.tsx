@@ -245,7 +245,6 @@ export function Invent() {
                   const to = 'to' in q.message ? q.message.to : undefined;
                   const d = decisionFor(q.message.id);
                   const counter = d?.counter ? concessionSentence(d.counter, baseWorld) : undefined;
-                  const text = neg.texts.find((t) => t.message === q.message.id);
                   return (
                     <motion.li className="qa-item" key={q.message.id} initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.12 * i, duration: 0.4 }}>
                       <div className="qa-q">
@@ -254,11 +253,6 @@ export function Invent() {
                           {c?.estimate ? <SourceTag kind="estimate">{`${money(c.estimate)} to them`}</SourceTag> : null}
                         </div>
                         <div className="qa-text">{c ? concessionSentence(c, baseWorld) : q.message.type}</div>
-                        {text ? (
-                          <div className="qa-why">
-                            Sent as: “{text.text}” {text.source === 'model-proposal' ? <SourceTag kind="estimate">Drafted wording</SourceTag> : null}
-                          </div>
-                        ) : null}
                       </div>
                       <div className="qa-a">
                         <Answer decision={d} name={name(to)} counter={counter} />

@@ -71,6 +71,14 @@ export function shortHash(h?: string, n = 10): string {
   return h.length > n + 2 ? `${h.slice(0, n)}…` : h;
 }
 
+/** Engine reasons in plain words: drops sentences that only repeat a fact with record ids or unformatted minor units. */
+export function plainReason(text: string): string {
+  const parts = text.split(/(?<=\.)\s+/).map((x) => x.trim()).filter(Boolean);
+  const jargon = (x: string) => /joint:\S+|\b[ao]-[a-z0-9-]+\b|\b\d{6,}\b/.test(x);
+  const kept = [...new Set(parts.filter((x) => !jargon(x)))];
+  return kept.length ? kept.join(' ') : text;
+}
+
 export function count(n: number, word: string, plural = word + 's'): string {
   return `${n} ${n === 1 ? word : plural}`;
 }

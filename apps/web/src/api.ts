@@ -134,7 +134,8 @@ export interface DisruptResult {
   world?: World;
 }
 
-export interface RecoveryView extends Recovery {
+export interface RecoveryView extends Omit<Recovery, 'rejected'> {
+  rejected: { description: string; reason: string; extraCost?: Money; slipHours?: number }[];
   plan?: Plan;
   replacements?: { replaces: Id; allocation: Allocation }[];
   candidates?: { description: string; source: string; permissible: boolean; changed: number; extraCostMinor: number; slipHours: number; reasons: string[] }[];
@@ -161,7 +162,7 @@ export interface IntentDraft {
 }
 
 /** Body of POST /api/markets. */
-export type MarketRequest = { flagship: true } | { seed: number; family: 'feasible' | 'salvageable' | 'impossible' } | { scenario: string; seed?: number };
+export type MarketRequest = { flagship: true } | { seed: number; family: 'feasible' | 'salvageable' | 'impossible' } | { template: string; seed?: number; family?: string };
 
 // ---------- Props for components mounted from their own folders ----------
 
@@ -256,6 +257,7 @@ export interface Api {
   refund(payment: Id, approvalToken: string): Promise<PaymentIntent>;
   disrupt(market: Id, d: { kind: Disruption['kind']; actor?: Id; offer?: Id; detail?: string }): Promise<DisruptResult>;
   recover(market: Id, disruption?: Id): Promise<RecoverResult>;
+  commitRecovery(market: Id, recovery: Id): Promise<{ agreement: Agreement; changed?: unknown }>;
   events(market: Id): Promise<MarketEvent[]>;
   subscribe(market: Id, onEvent: (e: MarketEvent) => void): () => void;
   trace(market: Id, entity: Id): Promise<TraceResult>;
@@ -415,7 +417,20 @@ export function httpApi(base = '', transport: Transport = { fetch: (...a) => fet
 
   return {
     mode: 'live',
-    status: async () => normStatus(await call('GET', '/api/status', undefined, 12000)),
+    status: async () => {
+      const st = normStatus(await call('GET', '/api/status', undefined, 12000));
+      if (st.paypal.configured && !st.paypal.clientId) {
+        try {
+          const cfg = await call('GET', '/api/config', undefined, 8000);
+          const pp: Raw = cfg?.paypal ?? {};
+          if (typeof pp.clientId === 'string' && pp.clientId) st.paypal.clientId = pp.clientId;
+          if (typeof pp.currency === 'string') st.paypal.currency = pp.currency as Currency;
+        } catch {
+          /* buttons fall back to the order's approval link */
+        }
+      }
+      return st;
+    },
     createMarket: async (req = { flagship: true }) => {
       const r = await call('POST', '/api/markets', req, 60000);
       return { market: r.id ?? r.market, world: r.world, intent: r.intent };
@@ -455,6 +470,10 @@ export function httpApi(base = '', transport: Transport = { fetch: (...a) => fet
     refund: (payment, approvalToken) => call<PaymentIntent>('POST', `/api/payments/${enc(payment)}/refund`, { approvalToken }, 60000),
     disrupt: async (market, d) => normDisrupt(await call('POST', `/api/markets/${enc(market)}/disrupt`, d)),
     recover: async (market, disruption) => normRecovery(await call('POST', `/api/markets/${enc(market)}/recover`, disruption ? { disruption } : {}, 120000)),
+    commitRecovery: async (market, recovery) => {
+      const r = await call('POST', `/api/markets/${enc(market)}/recover/commit`, { recovery }, 60000);
+      return { agreement: (r.agreement ?? r) as Agreement, changed: r.changed };
+    },
     events: (market) =>
       new Promise<MarketEvent[]>((resolve) => {
         const got = new Map<Id, MarketEvent>();

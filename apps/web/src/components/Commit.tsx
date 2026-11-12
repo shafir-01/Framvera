@@ -91,6 +91,7 @@ export function Commit() {
   const [proof, setProof] = useState<PaymentIntent | null>(null);
   const [active, setActive] = useState<Id | null>(null);
   const [ppError, setPpError] = useState<string | null>(null);
+  const [ppRound, setPpRound] = useState(0);
   const ag = s.agreement;
   if (!ag || !s.market) return null;
   const payees = payeesOf(ag);
@@ -126,10 +127,14 @@ export function Commit() {
                   <button className="payee-main" onClick={() => setActive(p.actor)} aria-pressed={isCurrent}>
                     <span className="payee-name">{name(p.actor)}</span>
                     <span className="payee-amt num">{money(p.amount)}</span>
-                    <span className="payee-state">
-                      <span className="verdict-dot" aria-hidden="true" />
-                      {pi ? (STATE_TEXT[pi.state] ?? pi.state) : <span className="sr-only">Not started</span>}
-                    </span>
+                    {pi ? (
+                      <span className="payee-state">
+                        <span className="verdict-dot" aria-hidden="true" />
+                        {STATE_TEXT[pi.state] ?? pi.state}
+                      </span>
+                    ) : (
+                      <span className="sr-only">Not started</span>
+                    )}
                   </button>
                   {pi ? (
                     <button className="copy" onClick={() => setProof(pi)} aria-label={`PayPal proof for ${name(p.actor)}`}>
@@ -171,7 +176,7 @@ export function Commit() {
                 </button>
               ) : status.clientId ? (
                 <PayPalButtons
-                  key={current.actor}
+                  key={`${current.actor}-${ppRound}`}
                   clientId={status.clientId}
                   currency={currency}
                   label={`Pay ${name(current.actor)} with PayPal Sandbox`}
@@ -185,7 +190,10 @@ export function Commit() {
                     const pi = payFor(current.actor) ?? (await act.startPayment(current.actor));
                     if (pi) await act.capture(pi.id);
                   }}
-                  onError={setPpError}
+                  onError={(m) => {
+                    setPpError(m);
+                    if (m.startsWith('Approval was cancelled')) setPpRound((n) => n + 1);
+                  }}
                 />
               ) : currentPi?.paypal.approveUrl ? (
                 <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
