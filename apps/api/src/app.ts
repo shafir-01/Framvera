@@ -13,6 +13,7 @@ import { AiBudget, Approvals, RateLimiter } from './security.ts';
 import { staticHandler } from './static.ts';
 import { register as registerSeller } from './seller.ts';
 import { registerDepth } from './depth.ts';
+import * as paypalModule from '@framvera/paypal';
 
 const VERSION = '0.1.0';
 
@@ -73,25 +74,6 @@ export function buildInfo(env: Record<string, string | undefined> = process.env,
 
 const without = <T extends object>(o: T, ...keys: string[]): T => Object.fromEntries(Object.entries(o).filter(([k]) => !keys.includes(k))) as T;
 
-export function stateFromRecord(r: PayPalRecord, prev: PaymentState): PaymentState {
-  if (prev.startsWith('REFUND') && r.refunds?.some((x) => x.status === 'COMPLETED')) return 'REFUND_COMPLETED';
-  if (r.captureId && r.status === 'COMPLETED') return 'CAPTURE_COMPLETED';
-  if (r.captureId && prev === 'CAPTURE_COMPLETED') return prev;
-  switch (r.status) {
-    case 'APPROVED':
-      return 'APPROVED';
-    case 'PAYER_ACTION_REQUIRED':
-      return 'PAYER_ACTION_REQUIRED';
-    case 'VOIDED':
-      return 'VOIDED';
-    case 'CREATED':
-      return r.approveUrl ? 'PAYER_ACTION_REQUIRED' : 'ORDER_CREATED';
-    case 'COMPLETED':
-      return 'CAPTURE_COMPLETED';
-    default:
-      return r.orderId && prev === 'PAYMENT_PROPOSED' ? 'ORDER_CREATED' : prev;
-  }
-}
 
 export function createApp(deps: Deps) {
   const { engine } = deps;
@@ -164,15 +146,18 @@ export function createApp(deps: Deps) {
     index(s);
     return s;
   };
+  // Plan and agreement ids are deterministic per market template, so the session named in the request wins.
   const findPlan = (planId: string, hint?: string) => {
-    const s = store.load(planIndex.get(planId) ?? hint ?? '');
+    const hinted = typeof hint === 'string' ? store.load(hint) : undefined;
+    const s = hinted?.plans[planId] ? hinted : hinted ? undefined : store.load(planIndex.get(planId) ?? '');
     const plan = s?.plans[planId];
     if (!s || !plan) throw new HttpError(404, 'not_found', 'Plan not found');
     index(s);
     return { s, plan };
   };
   const findAgreement = (id: string, hint?: string) => {
-    const s = store.load(agreementIndex.get(id) ?? hint ?? '');
+    const hinted = typeof hint === 'string' ? store.load(hint) : undefined;
+    const s = hinted ?? store.load(agreementIndex.get(id) ?? '');
     if (!s || !s.agreement || s.agreement.id !== id) throw new HttpError(404, 'not_found', 'Agreement not found');
     index(s);
     return { s, agreement: s.agreement };
@@ -202,14 +187,6 @@ export function createApp(deps: Deps) {
       truths.set(s.id, t);
     }
     return t;
-  };
-  const payState = (r: any, prev: PaymentState): PaymentState => {
-    if (engine.paymentState && (r.orderStatus || r.captureStatus || r.refunds?.length || r.authorizationStatus)) {
-      const next = engine.paymentState(r) as PaymentState;
-      if (next === 'PAYMENT_PROPOSED' || (next === 'CAPTURE_UNKNOWN' && prev === 'CAPTURE_COMPLETED')) return prev;
-      return next;
-    }
-    return stateFromRecord(r, prev);
   };
   const obligationError = (e: unknown): never => {
     if (e instanceof Error && e.name === 'ObligationError') throw new HttpError(422, String((e as any).code ?? 'rejected'), e.message);
@@ -273,6 +250,32 @@ export function createApp(deps: Deps) {
     return c.json({ authority: a });
   });
 
+  /** Compiled or negotiated intents can only narrow what the buyer already allowed, never widen it. */
+  const narrower = (prev: any, next: any) => {
+    if (!prev) return { mayNegotiate: false, mayReserve: false, mayPreparePayments: false, maxSpend: next?.maxSpend ?? { currency: 'SEK', minor: 0 } };
+    const max = next?.maxSpend && next.maxSpend.currency === prev.maxSpend?.currency && next.maxSpend.minor < prev.maxSpend.minor ? next.maxSpend : prev.maxSpend;
+    return {
+      mayNegotiate: Boolean(prev.mayNegotiate && next?.mayNegotiate !== false),
+      mayReserve: Boolean(prev.mayReserve && next?.mayReserve !== false),
+      mayPreparePayments: Boolean(prev.mayPreparePayments && next?.mayPreparePayments !== false),
+      maxSpend: max,
+    };
+  };
+  /** A negotiation may move the deadline or budget only where the buyer consented in this request and within the flex the buyer stated. */
+  const consentedIntent = (prev: any, next: any, consent: any) => {
+    if (!next) return prev;
+    const flex = prev.negotiable ?? {};
+    let budget = prev.budget;
+    if (next.budget?.currency === prev.budget.currency && next.budget.minor !== prev.budget.minor) {
+      const up = next.budget.minor - prev.budget.minor;
+      if (up < 0 || (consent?.budget === true && up <= (flex.budgetMinor ?? 0))) budget = next.budget;
+    }
+    let deadline = prev.deadline;
+    const shift = (Date.parse(next.deadline) - Date.parse(prev.deadline)) / 3_600_000;
+    if (Number.isFinite(shift) && shift !== 0 && (shift < 0 || (consent?.deadline === true && shift <= (flex.deadlineHours ?? 0)))) deadline = next.deadline;
+    return { ...prev, budget, deadline, authority: narrower(prev.authority, next.authority) };
+  };
+
   app.post('/api/intents/compile', async (c) => {
     const b = await body(c);
     if (typeof b.text !== 'string' || !b.text.trim() || b.text.length > 2000) throw new HttpError(400, 'bad_request', 'Describe what you need in a sentence or two');
@@ -281,7 +284,7 @@ export function createApp(deps: Deps) {
     const live = budget.take();
     const r = await need(engine.compileIntent, 'intent compiler')(b.text, world, { live });
     if (s && r?.intent) {
-      s.intent = r.intent;
+      s.intent = { ...r.intent, authority: narrower(s.intent.authority, r.intent.authority) };
       store.save(s);
       store.emit(s.id, 'intent.compiled', { intent: s.intent, live: Boolean(r.live), model: r.model }, r.live ? 'model-proposal' : 'solver');
     }
@@ -326,17 +329,82 @@ export function createApp(deps: Deps) {
     };
   };
 
+  /**
+   * A buyer-chosen set of changes to negotiate (a what-if branch). Strict: known offers, fields those offers list as
+   * negotiable, well-formed values, intent changes only inside the flex the buyer stated and never above the spending limit.
+   * Whether a set unlocks the order is decided by re-solving, never taken from the request.
+   */
+  const chosenInterventions = async (s: Session, raw: unknown) => {
+    if (raw === undefined) return undefined;
+    if (!Array.isArray(raw) || raw.length === 0 || raw.length > 5) throw new HttpError(400, 'bad_request', 'Send between 1 and 5 interventions');
+    const offers = new Map(s.world.offers.map((o) => [o.id, o]));
+    const flex = s.intent.negotiable ?? {};
+    const max = s.intent.authority?.maxSpend;
+    const bad = (why: string): never => {
+      throw new HttpError(422, 'bad_intervention', why);
+    };
+    const out: any[] = [];
+    for (const [i, iv] of raw.entries()) {
+      const cs = (iv as any)?.concessions;
+      if (!Array.isArray(cs) || cs.length === 0 || cs.length > 6) bad(`Intervention ${i + 1} needs between 1 and 6 changes`);
+      const concessions = cs.map((c: any, j: number) => {
+        const t = c?.target;
+        const id = typeof c?.id === 'string' && c.id.length <= 80 ? c.id : `chosen-${i + 1}-${j + 1}`;
+        const rationale = typeof c?.rationale === 'string' ? c.rationale.slice(0, 300) : 'Chosen by the buyer.';
+        const estimate = isMoney(c?.estimate) && c.estimate.currency === s.world.currency ? c.estimate : { currency: s.world.currency, minor: 0 };
+        if (t?.kind === 'offer') {
+          const o = offers.get(t.offer);
+          if (!o) return bad(`Offer ${String(t.offer).slice(0, 40)} is not in this market`);
+          if (!o.negotiable.includes(t.field)) bad(`${o.id} does not list ${String(t.field).slice(0, 20)} as negotiable`);
+          const time = t.field === 'windowEnd' || t.field === 'windowStart';
+          if (t.field === 'joint') {
+            if (typeof c.to !== 'string' || !/^joint:shared:[\w-]+(>[\w-]+)+$/.test(c.to)) bad('A joint change must name a shared offer');
+            const members = String(c.to).slice('joint:shared:'.length).split('>');
+            if (!members.includes(o.id) || members.some((m: string) => !offers.get(m)?.negotiable.includes('joint'))) bad('Every member of a joint change must be an offer that lists joint delivery');
+          } else if (time ? typeof c.to !== 'string' || Number.isNaN(Date.parse(c.to)) : !Number.isInteger(c.to) || c.to < 0) bad(`Change ${id} has an invalid value`);
+          const from = t.field === 'joint' ? 'separate' : time ? (t.field === 'windowEnd' ? o.window.end : o.window.start) : t.field === 'capacity' ? o.capacity : t.field === 'minQty' ? o.minQty : t.field === 'setupFee' ? o.setupFee.minor : (o.tiers[0]?.unit.minor ?? 0);
+          return { id, target: { kind: 'offer', offer: o.id, field: t.field }, from, to: time ? new Date(c.to).toISOString() : c.to, estimate, rationale };
+        }
+        if (t?.kind === 'intent' && t.field === 'budget') {
+          if (!Number.isInteger(c.to) || c.to < s.intent.budget.minor || c.to - s.intent.budget.minor > (flex.budgetMinor ?? 0)) bad('A budget change must stay inside the flex the buyer stated');
+          if (max && c.to > max.minor) bad('A budget change cannot exceed the spending limit');
+          return { id, target: { kind: 'intent', field: 'budget' }, from: s.intent.budget.minor, to: c.to, estimate, rationale };
+        }
+        if (t?.kind === 'intent' && t.field === 'deadline') {
+          const shift = (Date.parse(c.to) - Date.parse(s.intent.deadline)) / 3_600_000;
+          if (!Number.isFinite(shift) || shift < 0 || shift > (flex.deadlineHours ?? 0)) bad('A deadline change must stay inside the flex the buyer stated');
+          return { id, target: { kind: 'intent', field: 'deadline' }, from: s.intent.deadline, to: new Date(c.to).toISOString(), estimate, rationale };
+        }
+        return bad(`Change ${id} targets something that cannot be negotiated`);
+      });
+      let unlocks = false;
+      let totalAfter: Money | undefined;
+      try {
+        const next = need(engine.applyConcessions, 'inverse feasibility')(s.world, s.intent, concessions);
+        const r = await need(engine.solve, 'solver')(next.world, next.intent);
+        unlocks = (r.status === 'optimal' || r.status === 'feasible') && Boolean(r.plan);
+        totalAfter = r.plan?.total;
+      } catch (e) {
+        if (e instanceof Unavailable) throw e;
+        bad(`Intervention ${i + 1} cannot be applied to this market`);
+      }
+      out.push({ id: typeof (iv as any).id === 'string' ? String((iv as any).id).slice(0, 80) : `chosen-${i + 1}`, concessions, unlocks, ...(totalAfter ? { totalAfter } : {}), method: 'heuristic', minimality: 'Chosen by the buyer; no minimality claim.' });
+    }
+    return out;
+  };
+
   app.post('/api/markets/:id/negotiate', async (c) => {
     const s = session(c.req.param('id'));
     const b = await body(c);
-    if (s.intent.authority?.mayNegotiate === false) throw new HttpError(403, 'scope', 'The buyer has not allowed negotiation');
+    if (!s.intent.authority?.mayNegotiate) throw new HttpError(403, 'scope', 'The buyer has not allowed negotiation');
+    const chosen = await chosenInterventions(s, b.interventions);
     const live = budget.take();
     const maxQuestions = Number.isInteger(b.maxQuestions) && b.maxQuestions > 0 ? Math.min(20, b.maxQuestions) : undefined;
-    const run = await need(engine.negotiate, 'negotiation')(s.world, s.intent, truthFor(s), { live, interventions: s.interventions, maxQuestions, buyerConsent: consentFrom(b) });
+    const run = await need(engine.negotiate, 'negotiation')(s.world, s.intent, truthFor(s), { live, maxQuestions, buyerConsent: consentFrom(b), ...(chosen ? { chosen } : {}) });
     s.run = without(run, 'world', 'before');
     s.decisions = run.decisions ?? s.decisions;
     if (run.world) s.world = run.world;
-    if (run.intent) s.intent = run.intent;
+    if (run.intent) s.intent = consentedIntent(s.intent, run.intent, b.consent);
     const plan: Plan | undefined = run.plan ?? (run.verification?.ok === false ? undefined : run.report?.plan);
     if (plan) s.plans[plan.id] = plan;
     store.save(s);
@@ -393,7 +461,7 @@ export function createApp(deps: Deps) {
     const b = await body(c);
     const { s, plan } = findPlan(c.req.param('id'), b.market);
     if (s.agreement) return c.json(s.agreement);
-    if (s.intent.authority?.mayReserve === false) throw new HttpError(403, 'scope', 'The buyer has not allowed reservations');
+    if (!s.intent.authority?.mayReserve) throw new HttpError(403, 'scope', 'The buyer has not allowed reservations');
     const v = need(engine.verifyPlan, 'plan verifier')(plan, s.world, s.intent);
     if (!v.ok) throw new HttpError(422, 'unverified', 'This plan did not pass independent verification');
     s.verified[plan.id] = true;
@@ -443,20 +511,10 @@ export function createApp(deps: Deps) {
       store.save(s);
       store.emit(s.id, 'intent.compiled', { intent: s.intent.id, grant: { scope: 'mayPreparePayments', agreement: agreement.id, version: agreement.version, termsHash: agreement.termsHash }, changedBy: 'buyer' }, 'buyer', { causes: store.causal.get(s.id, [`agreement:${agreement.id}`]) });
     }
-    const { token, claim } = approvals.issue({ kind: 'pay', agreement: agreement.id, subject: b.payee, termsHash: agreement.termsHash, amount: due.amount });
+    const { token, claim } = approvals.issue({ kind: 'pay', market: s.id, agreement: agreement.id, subject: b.payee, termsHash: agreement.termsHash, amount: due.amount });
     return c.json({ approvalToken: token, expiresAt: new Date(claim.exp).toISOString(), amount: due.amount, obligations: due.obligations });
   });
 
-  const apply = (s: Session, pi: PaymentIntent, r: any, extra: Record<string, unknown> = {}) => {
-    const rec: PayPalRecord = r?.paypal ?? r ?? pi.paypal;
-    pi.paypal = { ...pi.paypal, ...rec, refunds: rec.refunds ?? pi.paypal.refunds, debugIds: [...new Set([...(pi.paypal.debugIds ?? []), ...(rec.debugIds ?? [])])] };
-    const next = payState(pi.paypal, pi.state);
-    const changed = next !== pi.state;
-    pi.state = next;
-    store.save(s);
-    paymentIndex.set(pi.id, s.id);
-    if (changed || Object.keys(extra).length) store.emit(s.id, 'payment.state', { payment: pi, state: pi.state, paypalStatus: pi.paypal.status ?? null, ...extra }, 'paypal-sandbox', { actor: pi.payee });
-  };
 
   const returnBase = (c: Context) => {
     const origin = c.req.header('origin');
@@ -477,7 +535,18 @@ export function createApp(deps: Deps) {
     if (changed || Object.keys(extra).length) store.emit(s.id, 'payment.state', { payment: pi, state: pi.state, paypalStatus: pi.paypal.status ?? null, ...extra }, 'paypal-sandbox', { actor: pi.payee });
   };
   const refused = (e: any) => e?.name === 'PayPalApiError' && e.outcomeUnknown === false;
-  const pay = engine.payments;
+  /** Money moves only through the payments module: reconcile before retry, refunds bounded by what was captured. */
+  const pay = {
+    open: engine.payments?.open ?? paypalModule.openOrder,
+    capture: engine.payments?.capture ?? paypalModule.capturePayment,
+    refund: engine.payments?.refund ?? paypalModule.refundPayment,
+    reconcile: engine.payments?.reconcile ?? paypalModule.reconcile,
+    refundable: engine.payments?.refundable ?? paypalModule.refundable,
+  };
+  const paypalTrouble = (what: string, pi: PaymentIntent, e?: any) => {
+    const r = pi.paypal as any;
+    console.error(`paypal ${what}: payment ${pi.id} state ${pi.state} issue ${e?.issue ?? r.issue ?? 'none'} name ${e?.errorName ?? 'none'} debug ${e?.debugId ?? r.debugIds?.at(-1) ?? 'none'}`);
+  };
 
   app.post('/api/payments/orders', async (c) => {
     const b = await body(c);
@@ -485,7 +554,8 @@ export function createApp(deps: Deps) {
     const claim = approvals.verify(b.approvalToken);
     if (!claim || claim.kind !== 'pay') throw new HttpError(403, 'approval_invalid', 'The buyer approval is missing, expired or invalid');
     const gw = needGateway();
-    const { s, agreement } = findAgreement(claim.agreement, b.market);
+    if (claim.market && typeof b.market === 'string' && b.market !== claim.market) throw new HttpError(409, 'approval_mismatch', 'The approval was given in a different session');
+    const { s, agreement } = findAgreement(claim.agreement, claim.market ?? b.market);
     if (typeof b.agreementId === 'string' && b.agreementId !== agreement.id) throw new HttpError(409, 'approval_mismatch', 'The approval is for a different agreement');
     const operationKey = createHash('sha256').update(`${agreement.id}|${agreement.termsHash}|${claim.subject}|${claim.amount.minor}|${claim.nonce}`).digest('hex').slice(0, 32);
     const existing = Object.values(s.payments).find((p) => p.operationKey === operationKey);
@@ -514,10 +584,10 @@ export function createApp(deps: Deps) {
     };
     const extra = { approvedBy: 'buyer', gateway: gw.kind ?? 'paypal-sandbox' };
     try {
-      if (pay?.open) adopt(s, pi, await pay.open(pi, gw, { ...orderOpts, authority: authorityFor(s, agreement) }), extra);
-      else apply(s, pi, await gw.createOrder(pi, orderOpts), extra);
+      adopt(s, pi, await pay.open(pi, gw, { ...orderOpts, authority: authorityFor(s, agreement) }), extra);
       paymentIndex.set(pi.id, s.id);
-    } catch {
+    } catch (e: any) {
+      paypalTrouble('create order failed', pi, e);
       usedTokens.delete(claim.nonce);
       s.approvals.spent -= due.amount.minor;
       delete s.payments[pi.id];
@@ -532,8 +602,7 @@ export function createApp(deps: Deps) {
     const gw = needGateway();
     if (pi.paypal.orderId) {
       try {
-        if (pay?.reconcile) adopt(s, pi, await pay.reconcile(pi, gw));
-        else apply(s, pi, await gw.getOrder(pi.paypal.orderId));
+        adopt(s, pi, await pay.reconcile(pi, gw));
         pi.paypal.lastFetchedAt = new Date().toISOString();
         store.save(s);
       } catch {
@@ -549,12 +618,9 @@ export function createApp(deps: Deps) {
     if (pi.state === 'CAPTURE_COMPLETED') return c.json(pi);
     if (!['APPROVED', 'PAYER_ACTION_REQUIRED', 'ORDER_CREATED', 'CAPTURE_UNKNOWN', 'CAPTURE_PENDING'].includes(pi.state)) throw new HttpError(409, 'state', 'This payment cannot be captured now');
     try {
-      if (pay?.capture) adopt(s, pi, await pay.capture(pi, gw));
-      else {
-        apply(s, pi, await gw.capture(pi));
-        if ((pi.state as PaymentState) !== 'CAPTURE_COMPLETED' && pi.paypal.captureId && pi.paypal.status === 'COMPLETED') pi.state = 'CAPTURE_COMPLETED';
-      }
+      adopt(s, pi, await pay.capture(pi, gw));
     } catch (e: any) {
+      paypalTrouble('capture failed', pi, e);
       if (refused(e)) throw new HttpError(409, 'refused', `PayPal refused the capture${e.issue ? ` (${e.issue})` : ''}`);
       pi.state = 'CAPTURE_UNKNOWN';
       store.save(s);
@@ -562,6 +628,7 @@ export function createApp(deps: Deps) {
       throw new HttpError(503, 'capture_unknown', 'Capture outcome unknown. Retrieve the payment to reconcile before retrying');
     }
     if (pi.state === 'PAYER_ACTION_REQUIRED') throw new HttpError(409, 'not_approved', 'The buyer has not approved this order on PayPal yet');
+    if (pi.state === 'CAPTURE_DENIED') paypalTrouble('capture denied', pi);
     return c.json(pi);
   });
 
@@ -572,10 +639,10 @@ export function createApp(deps: Deps) {
     const { s, pi } = findPayment(c.req.param('id'));
     const { agreement } = findAgreement(pi.agreement, s.id);
     if (!REFUNDABLE.includes(pi.state) || !pi.paypal.captureId) throw new HttpError(409, 'state', 'Only captured payments can be refunded');
-    const left: Money = pay?.refundable ? pay.refundable(pi) : pi.charged;
+    const left: Money = pay.refundable(pi);
     const amount = isMoney(b.amount) ? b.amount : left;
     if (amount.currency !== left.currency || amount.minor <= 0 || amount.minor > left.minor) throw new HttpError(409, 'amount_mismatch', 'Refund amount is out of range');
-    const { token } = approvals.issue({ kind: 'refund', agreement: agreement.id, subject: pi.id, termsHash: agreement.termsHash, amount });
+    const { token } = approvals.issue({ kind: 'refund', market: s.id, agreement: agreement.id, subject: pi.id, termsHash: agreement.termsHash, amount });
     return c.json({ approvalToken: token, amount });
   });
 
@@ -587,26 +654,24 @@ export function createApp(deps: Deps) {
     const gw = needGateway();
     if (usedTokens.has(claim.nonce)) throw new HttpError(403, 'approval_used', 'This approval was already used');
     usedTokens.add(claim.nonce);
-    if (pay?.refund) {
-      try {
-        adopt(s, pi, await pay.refund(pi, gw, claim.amount), { approvedBy: 'buyer' });
-      } catch (e: any) {
-        if (refused(e) || e?.name === 'MoneyError' || e?.name === 'PaymentInvariantError') throw new HttpError(409, 'refused', 'The refund was refused');
-        pi.state = 'REFUND_UNKNOWN';
-        store.save(s);
-        throw new HttpError(503, 'refund_unknown', 'Refund outcome unknown. Retrieve the payment to reconcile');
-      }
-      return c.json(pi);
-    }
-    pi.state = 'REFUND_PENDING';
+    // A refused refund is final for its request id (PayPal replays the stored answer), so a new attempt needs the next sequence.
+    const sequence = pi.paypal.refunds.length + (s.refundRefusals?.[pi.id] ?? 0);
     try {
-      apply(s, pi, await gw.refund(pi, claim.amount));
-      if (pi.state === 'REFUND_PENDING' && pi.paypal.refunds.some((r) => r.status === 'COMPLETED')) pi.state = 'REFUND_COMPLETED';
-    } catch {
+      adopt(s, pi, await pay.refund(pi, gw, claim.amount, { sequence }), { approvedBy: 'buyer' });
+    } catch (e: any) {
+      paypalTrouble('refund failed', pi, e);
+      if (refused(e) || e?.name === 'MoneyError' || e?.name === 'PaymentInvariantError') throw new HttpError(409, 'refused', 'The refund was refused');
       pi.state = 'REFUND_UNKNOWN';
-      throw new HttpError(503, 'refund_unknown', 'Refund outcome unknown. Retrieve the payment to reconcile');
-    } finally {
       store.save(s);
+      throw new HttpError(503, 'refund_unknown', 'Refund outcome unknown. Retrieve the payment to reconcile');
+    }
+    if (pi.state === 'REFUND_DENIED') {
+      paypalTrouble('refund denied', pi);
+      s.refundRefusals = { ...(s.refundRefusals ?? {}), [pi.id]: (s.refundRefusals?.[pi.id] ?? 0) + 1 };
+      store.save(s);
+      const issue = (pi.paypal as any).issue as string | undefined;
+      const why = issue === 'REFUND_FAILED_INSUFFICIENT_FUNDS' ? 'the merchant PayPal account does not hold enough funds in this currency' : issue ? issue.toLowerCase().replace(/_/g, ' ') : 'no reason given';
+      throw new HttpError(409, 'refund_denied', `PayPal declined the refund: ${why}. Nothing was refunded; you can approve the refund again later.`);
     }
     return c.json(pi);
   });
@@ -691,10 +756,34 @@ export function createApp(deps: Deps) {
     if (!d) throw new HttpError(409, 'state', 'No disruption to recover from');
     const recover = need(engine.recover, 'recovery');
     const payments = Object.values(s.payments);
-    let rec = await recover(s.agreement, s.world, s.intent, d, { payments });
+    // Purchased standby options are called first: they replace a failed obligation without touching any other.
+    const O = engine.options;
+    const held: any[] = (s.options as any)?.options ?? [];
+    const purchased = held.filter((o) => o.status === 'purchased');
+    let optionNote: string | null = null;
+    if (purchased.length && O?.exerciseOption) {
+      const ex = O.exerciseOption(s.agreement, s.world, s.intent, d, held, O.heldCapacity ? { reservedElsewhere: O.heldCapacity(held) } : {});
+      optionNote = ex.reason ?? null;
+      if (ex.exercised && ex.recovery) {
+        const rec = { ...ex.recovery, amendment: ex.amendment, plan: ex.plan, verification: ex.verification, replacements: ex.replacements, source: 'standby-option', reason: ex.reason };
+        s.world = ex.world ?? s.world;
+        s.options = { ...((s.options as any) ?? {}), options: ex.options ?? held, exercise: { exercised: true, reason: ex.reason, disruption: d.id } };
+        s.recoveries.push(rec);
+        store.save(s);
+        for (const m of ex.notices ?? []) store.emit(s.id, 'negotiation.message', m, 'buyer', { actor: m.from, causes: store.causal.get(s.id, [`disruption:${d.id}`]) });
+        for (const o of (ex.options ?? []).filter((x: any) => x.status === 'exercised')) {
+          store.emit(s.id, 'agreement.state', { agreement: o.agreement, state: o.agreement.state, termsHash: o.agreement.termsHash, option: o.id }, 'buyer', { causes: store.causal.get(s.id, [`disruption:${d.id}`]) });
+        }
+        store.emit(s.id, 'recovery.proposed', { recovery: rec }, 'solver');
+        return c.json({ ...rec, recovery: rec, agreement: ex.amendment ?? s.agreement, exercised: true, notices: ex.notices ?? [] });
+      }
+    }
+    // Held standby units are off the open market; the options themselves are offers recovery may use.
+    const base = purchased.length && O?.withStandby ? O.withStandby(s.world, purchased, d.at) : s.world;
+    let rec = await recover(s.agreement, base, s.intent, d, { payments });
     let negotiated: any = null;
     // With published offers exhausted, suppliers are asked for the smallest change; their private policies answer.
-    if (!rec.feasible && engine.negotiate && b.negotiate !== false && s.intent.authority?.mayNegotiate !== false) {
+    if (!rec.feasible && engine.negotiate && b.negotiate !== false && s.intent.authority?.mayNegotiate) {
       const run = await engine.negotiate(rec.world ?? s.world, s.intent, truthFor(s), { buyerConsent: consentFrom(b), explain: false });
       if (run.accepted?.length && run.world) {
         const again = await recover(s.agreement, run.world, s.intent, d, { payments });
@@ -711,7 +800,7 @@ export function createApp(deps: Deps) {
         }
       } else negotiated = { outcome: run.outcome, accepted: [], messages: run.messages?.length ?? 0, feasibleAfter: false };
     }
-    const kept = { ...without(rec, 'world'), ...(negotiated ? { negotiated } : {}) };
+    const kept = { ...without(rec, 'world'), ...(negotiated ? { negotiated } : {}), ...(optionNote ? { options: optionNote } : {}) };
     s.recoveries.push(kept);
     if (rec.world) s.world = rec.world;
     store.save(s);
@@ -848,6 +937,7 @@ export function createApp(deps: Deps) {
         ...availability(engine),
         paypalConfigured: kind === 'paypal-sandbox',
         paymentsGateway: kind,
+        negotiateInterventions: typeof engine.negotiate === 'function' && typeof engine.applyConcessions === 'function',
         aiConfigured: config.aiKeyConfigured,
         aiEnabled: config.aiEnabled,
         aiBudgetLeft: config.aiEnabled && budget.usedToday < config.dailyAiCalls,

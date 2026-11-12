@@ -149,29 +149,11 @@ export function register(app: Hono, ctx: SellerCtx) {
   const findActor = (w: World, id: string) => w.actors.find((a) => a.id === id);
   const ownOffers = (w: World, actor: string) => w.offers.filter((o) => o.actor === actor);
 
-  // ---------- co-pilot: effect of one concession on the seller's own capacity, schedule and margin ----------
+  // ---------- co-pilot: effect of one concession on the seller's own published terms, capacity and schedule. Private policy values never reach this view. ----------
   const planFor = (s: Session): Plan | undefined => {
     const plans = Object.values(s.plans);
     return plans.filter((p) => p.worldVersion === s.world.version).at(-1) ?? plans.at(-1);
   };
-  const floorOf = (s: Session, actor: string, offer: Offer, field: NegotiableField): number | undefined => {
-    try {
-      const pol = ctx.truthFor(s)?.policies?.[actor];
-      const raw = pol?.offers?.[offer.id]?.[field] ?? pol?.reservation?.[field];
-      return typeof raw === 'number' ? raw : undefined;
-    } catch {
-      return undefined;
-    }
-  };
-  const ownPolicyNumber = (s: Session, actor: string, name: string): number | undefined => {
-    try {
-      const v = ctx.truthFor(s)?.policies?.[actor]?.[name];
-      return typeof v === 'number' ? v : undefined;
-    } catch {
-      return undefined;
-    }
-  };
-
   const copilot = (s: Session, actor: string, c: Concession) => {
     const w = s.world;
     const cur = w.currency;
@@ -196,14 +178,9 @@ export function register(app: Hono, ctx: SellerCtx) {
     switch (field) {
       case 'unitPrice': {
         if (to === undefined) break;
-        const floor = floorOf(s, actor, offer, 'unitPrice');
         lines.push({ label: 'Price per ' + unit.replace(/s$/, ''), now: kr(price, cur), after: kr(to, cur) });
         lines.push({ label: `Revenue on ${group(qty)} ${unit}`, now: kr(price * qty, cur), after: kr(to * qty, cur) });
         lines.push({ label: 'Change in revenue', now: '', after: kr((to - price) * qty, cur) });
-        if (floor !== undefined) {
-          lines.push({ label: 'Margin above your own floor', now: kr((price - floor) * qty, cur), after: kr((to - floor) * qty, cur) });
-          if (to < floor) notes.push(`This is below your own floor of ${kr(floor, cur)} per ${unit.replace(/s$/, '')}.`);
-        }
         break;
       }
       case 'capacity': {
@@ -212,8 +189,7 @@ export function register(app: Hono, ctx: SellerCtx) {
         lines.push({ label: 'Capacity', now: `${group(offer.capacity)} ${unit}`, after: `${group(to)} ${unit}` });
         lines.push({ label: 'Share of capacity used', now: `${Math.round((qty / Math.max(1, offer.capacity)) * 100)}%`, after: `${Math.round((qty / Math.max(1, to)) * 100)}%` });
         if (over > 0) {
-          const ot = ownPolicyNumber(s, actor, 'overtimeCapacity');
-          notes.push(`${group(over)} ${unit} above what you published.` + (ot !== undefined ? ` Your overtime allowance is ${group(ot)}.` : ''));
+          notes.push(`${group(over)} ${unit} above what you published.`);
         }
         break;
       }
@@ -365,7 +341,7 @@ export function register(app: Hono, ctx: SellerCtx) {
     const id = c.req.param('id');
     if (!seatedIn(id).length || typeof ctx.engine.negotiate !== 'function') return next();
     const s = ctx.session(id);
-    if (s.intent.authority?.mayNegotiate === false) return fail(c, 403, 'scope', 'The buyer has not allowed negotiation');
+    if (!s.intent.authority?.mayNegotiate) return fail(c, 403, 'scope', 'The buyer has not allowed negotiation');
     const b = await body(c);
     const r = await guard(id, () => runNegotiation(s, b));
     if (r === 'busy') return fail(c, 409, 'busy', 'A negotiation round is already running');

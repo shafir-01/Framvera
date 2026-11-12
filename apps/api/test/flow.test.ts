@@ -283,3 +283,134 @@ describe('integration surface', () => {
     expect((await post(app, `/api/markets/${m.id}/mechanisms/compare`)).status).toBe(501);
   });
 });
+
+describe('parallel sessions of the same market', () => {
+  it('commits, approves and pays inside the session named in the request, even when plan ids repeat', async () => {
+    const gw = new TestGateway();
+    const app = makeApp(stubEngine(), gw);
+    const a: any = await (await post(app, '/api/markets', {})).json();
+    const b: any = await (await post(app, '/api/markets', {})).json();
+    for (const m of [a, b]) {
+      await post(app, `/api/markets/${m.id}/analyze`);
+      await post(app, `/api/markets/${m.id}/negotiate`);
+    }
+    const ca = await post(app, '/api/agreements/p1/commit', { market: a.id });
+    expect(ca.status).toBe(201);
+    const cb = await post(app, '/api/agreements/p1/commit', { market: b.id });
+    expect(cb.status).toBe(201);
+    const ma: any = await (await app.request(`/api/markets/${a.id}`)).json();
+    const mb: any = await (await app.request(`/api/markets/${b.id}`)).json();
+    expect(ma.agreement).toBeTruthy();
+    expect(mb.agreement).toBeTruthy();
+    const ag = ma.agreement;
+    const ap: any = await (await post(app, `/api/agreements/${ag.id}/approve-payment`, { market: a.id, payee: 'a1', termsHash: ag.termsHash, amount: { currency: 'SEK', minor: 3_000_000 } })).json();
+    expect((await post(app, '/api/payments/orders', { approvalToken: ap.approvalToken, market: b.id })).status).toBe(409);
+    const pi: any = await (await post(app, '/api/payments/orders', { approvalToken: ap.approvalToken, market: a.id })).json();
+    expect(pi.id).toBeTruthy();
+    const after: any = await (await app.request(`/api/markets/${a.id}`)).json();
+    const other: any = await (await app.request(`/api/markets/${b.id}`)).json();
+    expect(after.payments.map((p: any) => p.id)).toEqual([pi.id]);
+    expect(other.payments).toEqual([]);
+  });
+
+  it('shows money in rejected-plan reasons as formatted amounts', async () => {
+    const { moneyText } = await import('../src/engine.ts');
+    const t = moneyText('SEK')('Costs 5940000, above the budget of 5500000. Total 59 400 kr exceeds the budget.');
+    expect(t).not.toMatch(/5940000|5500000/);
+    expect(t).toMatch(/^Costs 59.400 kr, above the budget of 55.000 kr\./);
+  });
+});
+
+describe('static web build', () => {
+  it('serves the solver wasm as application/wasm and falls back to the app for routes', async () => {
+    const { mkdtempSync, mkdirSync, writeFileSync } = await import('node:fs');
+    const { join } = await import('node:path');
+    const { tmpdir } = await import('node:os');
+    const dir = mkdtempSync(join(tmpdir(), 'framvera-web-'));
+    mkdirSync(join(dir, 'assets'));
+    writeFileSync(join(dir, 'index.html'), '<!doctype html><title>t</title>');
+    writeFileSync(join(dir, 'assets', 'highs.wasm'), Buffer.from([0, 97, 115, 109]));
+    const app = makeApp(stubEngine(), undefined, { webDist: dir });
+    const wasm = await app.request('/assets/highs.wasm');
+    expect(wasm.status).toBe(200);
+    expect(wasm.headers.get('content-type')).toBe('application/wasm');
+    const page = await app.request('/evidence/x');
+    expect(page.headers.get('content-type')).toContain('text/html');
+  });
+});
+
+describe('refunds through the payments module', () => {
+  it('a refund PayPal declines answers 409 with the reason, and the next approval uses a fresh PayPal-Request-Id', async () => {
+    const { FakeGateway } = await import('@framvera/paypal');
+    process.env.VITEST ??= '1';
+    const gw: any = new FakeGateway();
+    const app = makeApp(stubEngine(), gw);
+    const { m, agreement } = await flow(app);
+    const ap: any = await (await post(app, `/api/agreements/${agreement.id}/approve-payment`, { market: m.id, payee: 'a1', termsHash: agreement.termsHash, amount: { currency: 'SEK', minor: 3_000_000 } })).json();
+    const pi: any = await (await post(app, '/api/payments/orders', { approvalToken: ap.approvalToken, market: m.id })).json();
+    gw.paypal.approve(pi.paypal.orderId);
+    const cap: any = await (await post(app, `/api/payments/${pi.id}/capture`)).json();
+    expect(cap.state).toBe('CAPTURE_COMPLETED');
+    const refund = async () => {
+      const ar: any = await (await post(app, `/api/payments/${pi.id}/approve-refund`, { amount: { currency: 'SEK', minor: 50_000 } })).json();
+      return post(app, `/api/payments/${pi.id}/refund`, { approvalToken: ar.approvalToken });
+    };
+    gw.paypal.inject('refundCapture', 'deny');
+    const denied = await refund();
+    expect(denied.status).toBe(409);
+    expect(((await denied.json()) as any).error.code).toBe('refund_denied');
+    const ok = await refund();
+    expect(ok.status).toBe(200);
+    expect(((await ok.json()) as any).state).toBe('REFUND_COMPLETED');
+    const ids = gw.paypal.calls.filter((c: any) => c.op === 'refundCapture').map((c: any) => c.requestId);
+    expect(new Set(ids).size).toBe(ids.length);
+  });
+});
+
+describe('buyer-chosen interventions', () => {
+  function engineWithOffer() {
+    const e = stubEngine();
+    const base = e.flagshipWorld!();
+    const offer = { id: 'o1', version: 1, actor: 'a1', stage: 's', capacity: 500, minQty: 1, ratePerHour: 50, setupFee: { currency: 'SEK', minor: 0 }, tiers: [{ minQty: 0, unit: { currency: 'SEK', minor: 4_000 } }], window: { start: '2026-11-20T06:00:00.000Z', end: '2026-11-20T16:00:00.000Z' }, handoffHours: 1, validUntil: '2026-11-30T00:00:00.000Z', negotiable: ['unitPrice'], provenance: { source: 'synthetic-market', observedAt: '2026-11-20T00:00:00.000Z' }, claims: [] };
+    const world = { ...base.world, offers: [offer] } as any;
+    const intent = { ...base.intent, negotiable: { budgetMinor: 100_000 } } as any;
+    e.flagshipWorld = () => ({ ...base, world, intent });
+    const seen: any[] = [];
+    e.applyConcessions = (w: any, i: any) => ({ world: { ...w, version: w.version + 1 }, intent: i });
+    const negotiate = e.negotiate!;
+    e.negotiate = async (w: any, i: any, t: any, opts: any) => {
+      seen.push(opts.chosen);
+      return negotiate(w, i, t, opts);
+    };
+    return { e, seen };
+  }
+  const iv = (concessions: any[]) => ({ interventions: [{ id: 'mine', concessions }] });
+
+  it('negotiates exactly a valid chosen set, with unlocking decided by re-solving', async () => {
+    const { e, seen } = engineWithOffer();
+    const app = makeApp(e);
+    const m: any = await (await post(app, '/api/markets', {})).json();
+    const r = await post(app, `/api/markets/${m.id}/negotiate`, iv([{ target: { kind: 'offer', offer: 'o1', field: 'unitPrice' }, to: 3_500, unlocks: true }]));
+    expect(r.status).toBe(200);
+    expect(seen.at(-1)).toHaveLength(1);
+    expect(seen.at(-1)[0].concessions[0]).toMatchObject({ target: { offer: 'o1', field: 'unitPrice' }, from: 4_000, to: 3_500 });
+    expect(seen.at(-1)[0].unlocks).toBe(true);
+    const st: any = await (await app.request('/api/status')).json();
+    expect(st.services.negotiateInterventions).toBe(true);
+  });
+
+  it('refuses unknown offers, fields the offer does not negotiate, and intent changes beyond the stated flex', async () => {
+    const { e } = engineWithOffer();
+    const app = makeApp(e);
+    const m: any = await (await post(app, '/api/markets', {})).json();
+    const cases = [
+      iv([{ target: { kind: 'offer', offer: 'nope', field: 'unitPrice' }, to: 1 }]),
+      iv([{ target: { kind: 'offer', offer: 'o1', field: 'capacity' }, to: 900 }]),
+      iv([{ target: { kind: 'offer', offer: 'o1', field: 'unitPrice' }, to: -5 }]),
+      iv([{ target: { kind: 'intent', field: 'budget' }, to: 5_500_000 + 200_000 }]),
+      iv([{ target: { kind: 'intent', field: 'deadline' }, to: '2026-12-31T00:00:00.000Z' }]),
+      { interventions: [] },
+    ];
+    for (const body of cases) expect([400, 422]).toContain((await post(app, `/api/markets/${m.id}/negotiate`, body)).status);
+  });
+});

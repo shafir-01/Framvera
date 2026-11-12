@@ -15,6 +15,9 @@ const MIME: Record<string, string> = {
   '.woff2': 'font/woff2',
   '.webp': 'image/webp',
   '.txt': 'text/plain; charset=utf-8',
+  '.wasm': 'application/wasm',
+  '.map': 'application/json',
+  '.webmanifest': 'application/manifest+json',
 };
 
 export function staticHandler(root: string) {

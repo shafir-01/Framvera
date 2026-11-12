@@ -107,7 +107,7 @@ describe('seller terminal', () => {
     expect(v.pending).toHaveLength(1);
     expect(v.pending[0].benefit).toContain('Unlocks the order');
     expect(v.pending[0].copilot.lines.some((l: any) => l.label.startsWith('Revenue'))).toBe(true);
-    expect(v.pending[0].copilot.notes.join(' ')).toContain('below your own floor');
+    expect(JSON.stringify(v)).not.toMatch(/floor|overtime allowance/i);
   });
 
   it('accept with a stale termsHash is refused; the current hash is accepted and delivered over SSE', async () => {

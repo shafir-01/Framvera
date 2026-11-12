@@ -1,17 +1,17 @@
 {
-  "generatedAt": "2026-11-12T15:47:46.338Z",
+  "generatedAt": "2026-11-12T17:24:21.737Z",
   "base": "http://localhost:8823",
-  "market": "m-3594211f-ae8",
+  "market": "m-f16ecc54-b22",
   "paypal": "sandbox",
   "steps": [
     {
       "step": "status",
       "command": "curl -s -X GET http://localhost:8823/api/status",
       "status": 200,
-      "ms": 21,
+      "ms": 19,
       "result": {
         "build": {
-          "commit": "6443781e242c5c3b7a243baf91104c59b147b5d5",
+          "commit": "5eec91a2ca2c92789110a1c68914d68e2cdc895c",
           "source": "local"
         },
         "paypal": {
@@ -37,6 +37,7 @@
           "options": true,
           "paypalConfigured": true,
           "paymentsGateway": "paypal-sandbox",
+          "negotiateInterventions": true,
           "aiConfigured": true,
           "aiEnabled": true,
           "aiBudgetLeft": true,
@@ -49,9 +50,9 @@
       "step": "create market",
       "command": "curl -s -X POST http://localhost:8823/api/markets -H 'content-type: application/json' -d '{\"template\":\"flagship\"}'",
       "status": 201,
-      "ms": 25,
+      "ms": 20,
       "result": {
-        "market": "m-3594211f-ae8",
+        "market": "m-f16ecc54-b22",
         "template": "flagship",
         "world": "Promotional kits, Stockholm",
         "actors": 27,
@@ -75,15 +76,15 @@
     },
     {
       "step": "analyze",
-      "command": "curl -s -X POST http://localhost:8823/api/markets/m-3594211f-ae8/analyze",
+      "command": "curl -s -X POST http://localhost:8823/api/markets/m-f16ecc54-b22/analyze",
       "status": 200,
-      "ms": 3319,
+      "ms": 2533,
       "result": {
         "status": "infeasible",
         "solver": {
           "name": "HiGHS",
           "version": "1.15 (highs-js 1.15.4, WebAssembly)",
-          "ms": 3298.9
+          "ms": 2515
         },
         "core": {
           "summary": "No combination of the published offers is within 55 000 kr. For the full order, with the production steps in their required order, these 14 conditions cannot all hold at once. Relaxing any single one of them would make a plan possible.",
@@ -111,9 +112,9 @@
     },
     {
       "step": "invent",
-      "command": "curl -s -X POST http://localhost:8823/api/markets/m-3594211f-ae8/invent",
+      "command": "curl -s -X POST http://localhost:8823/api/markets/m-f16ecc54-b22/invent",
       "status": 200,
-      "ms": 1175,
+      "ms": 1373,
       "result": {
         "interventions": [
           {
@@ -159,22 +160,22 @@
             ]
           },
           {
-            "id": "iv-697ce6e1",
+            "id": "iv-eebafc8b",
             "unlocks": true,
             "method": "coalition",
             "minimality": "Next best after excluding earlier change sets: fewest changes (3 changed fields) among the remaining options, then the lowest estimated cost, within the planner's bounds (time shifts up to 168 hours, price cuts up to 30%), using the planner's cost estimates. Supplier acceptance is unknown until asked.",
             "totalAfter": "52000.00 SEK",
             "concessions": [
               {
-                "id": "cn-fa7106c3",
+                "id": "cn-2e861524",
                 "target": {
                   "kind": "offer",
                   "offer": "o-kista",
                   "field": "windowEnd"
                 },
                 "from": "2026-11-19T15:00:00.000Z",
-                "to": "2026-11-19T17:01:00.000Z",
-                "rationale": "Kista Pack & Montage works until Thu 19 Nov 17:01 UTC instead of Thu 19 Nov 15:00 UTC."
+                "to": "2026-11-19T17:00:00.000Z",
+                "rationale": "Kista Pack & Montage works until Thu 19 Nov 17:00 UTC instead of Thu 19 Nov 15:00 UTC."
               },
               {
                 "id": "cn-83ac1c81",
@@ -382,9 +383,9 @@
     },
     {
       "step": "negotiate",
-      "command": "curl -s -X POST http://localhost:8823/api/markets/m-3594211f-ae8/negotiate",
+      "command": "curl -s -X POST http://localhost:8823/api/markets/m-f16ecc54-b22/negotiate",
       "status": 200,
-      "ms": 15299,
+      "ms": 22947,
       "result": {
         "outcome": "feasible",
         "queriesUsed": 3,
@@ -514,14 +515,15 @@
     },
     {
       "step": "verify",
-      "command": "curl -s -X POST http://localhost:8823/api/plans/plan-1d100d7e/verify -H 'content-type: application/json' -d '{\"market\":\"m-3594211f-ae8\"}'",
+      "command": "curl -s -X POST http://localhost:8823/api/plans/plan-1d100d7e/verify -H 'content-type: application/json' -d '{\"market\":\"m-f16ecc54-b22\"}'",
       "status": 200,
-      "ms": 20,
+      "ms": 53,
       "result": {
         "ok": true,
         "checks": [
           "ok identity: Plan matches this world version and request.",
           "ok offers: Every allocation uses an existing, active offer.",
+          "ok times: Every time is a readable UTC timestamp.",
           "ok exclusive: No capacity is promised twice.",
           "ok validity: Every offer is still valid.",
           "ok demand: Every stage produces enough.",
@@ -538,14 +540,14 @@
     },
     {
       "step": "commit",
-      "command": "curl -s -X POST http://localhost:8823/api/agreements/plan-1d100d7e/commit -H 'content-type: application/json' -d '{\"market\":\"m-3594211f-ae8\"}'",
+      "command": "curl -s -X POST http://localhost:8823/api/agreements/plan-1d100d7e/commit -H 'content-type: application/json' -d '{\"market\":\"m-f16ecc54-b22\"}'",
       "status": 201,
-      "ms": 22,
+      "ms": 50,
       "result": {
         "id": "agr:plan-1d100d7e",
         "state": "COMMITTED",
         "version": 1,
-        "termsHash": "136343e02dc8d3ebc390c45905ac0115cddd84da6abc13c647277a7f590586d0",
+        "termsHash": "278a39cb8af6f6f7de3e75ed69ede676d9eacaf5fed9b64413e17d360038951e",
         "acceptances": [
           {
             "actor": "buyer",
@@ -569,6 +571,11 @@
           },
           {
             "actor": "a-nacka",
+            "basis": "synthetic-policy",
+            "signs": true
+          },
+          {
+            "actor": "a-roslagen",
             "basis": "synthetic-policy",
             "signs": true
           },
@@ -620,13 +627,23 @@
             "state": "ACTIVE"
           },
           {
-            "id": "obl:plan-1d100d7e:4",
+            "id": "obl:plan-1d100d7e:4.0",
+            "actor": "a-roslagen",
+            "offer": "joint:shared:o-roslagen>o-lindqvist",
+            "qty": 500,
+            "start": "2026-11-20T04:00:00.000Z",
+            "due": "2026-11-20T07:00:00.000Z",
+            "amount": "3788.89 SEK",
+            "state": "ACTIVE"
+          },
+          {
+            "id": "obl:plan-1d100d7e:4.1",
             "actor": "a-lindqvist",
             "offer": "joint:shared:o-roslagen>o-lindqvist",
             "qty": 500,
             "start": "2026-11-20T04:00:00.000Z",
             "due": "2026-11-20T07:00:00.000Z",
-            "amount": "6700.00 SEK",
+            "amount": "2911.11 SEK",
             "state": "ACTIVE"
           }
         ]
@@ -634,9 +651,9 @@
     },
     {
       "step": "options discover",
-      "command": "curl -s -X POST http://localhost:8823/api/markets/m-3594211f-ae8/options/discover",
+      "command": "curl -s -X POST http://localhost:8823/api/markets/m-f16ecc54-b22/options/discover",
       "status": 200,
-      "ms": 24,
+      "ms": 30,
       "result": {
         "risks": [
           {
@@ -660,95 +677,73 @@
             "label": "planner-estimate"
           },
           {
-            "obligation": "obl:plan-1d100d7e:4",
+            "obligation": "obl:plan-1d100d7e:4.0",
+            "pFail": 0.1531900000000001,
+            "label": "planner-estimate"
+          },
+          {
+            "obligation": "obl:plan-1d100d7e:4.1",
             "pFail": 0.1531900000000001,
             "label": "planner-estimate"
           }
         ],
-        "options": [
-          {
-            "id": "opt:obl:plan-1d100d7e:1:o-orebro",
-            "status": "quoted",
-            "supplier": "a-orebro",
-            "offer": "o-orebro",
-            "covers": [
-              "obl:plan-1d100d7e:1"
-            ],
-            "qty": 500,
-            "fee": "997.50 SEK",
-            "strikeUnit": "39.90 SEK",
-            "basis": "synthetic-policy",
-            "check": true
-          }
-        ],
+        "options": [],
         "declined": [
           {
-            "actor": "a-express",
-            "reason": "Independent check failed: Total 59 700 kr exceeds the spending authority of 55 000 kr."
+            "actor": "a-orebro",
+            "reason": "Independent check failed: Allocation on joint:shared:o-roslagen>o-lindqvist names the wrong supplier or stage."
           },
           {
             "actor": "a-textil-sundbyberg",
-            "reason": "Independent check failed: Total 55 725 kr exceeds the spending authority of 55 000 kr."
+            "reason": "Independent check failed: Allocation on joint:shared:o-roslagen>o-lindqvist names the wrong supplier or stage."
           }
         ]
       }
     },
     {
       "step": "options value",
-      "command": "curl -s -X POST http://localhost:8823/api/markets/m-3594211f-ae8/options/value -H 'content-type: application/json' -d '{\"scenarios\":500}'",
+      "command": "curl -s -X POST http://localhost:8823/api/markets/m-f16ecc54-b22/options/value -H 'content-type: application/json' -d '{\"scenarios\":500}'",
       "status": 200,
-      "ms": 1691,
+      "ms": 3270,
       "result": {
         "label": "planner-estimate",
         "scenarios": 500,
-        "buy": [
-          "opt:obl:plan-1d100d7e:1:o-orebro"
-        ],
-        "fees": "997.50 SEK",
-        "baselineExpectedLoss": "17936.80 SEK",
-        "withOptionsExpectedLoss": "15603.20 SEK",
-        "options": [
-          {
-            "option": "opt:obl:plan-1d100d7e:1:o-orebro",
-            "fee": "997.50 SEK",
-            "avoided": "2333.60 SEK",
-            "buy": true,
-            "reason": "Expected loss avoided 2 333,60 kr exceeds the 997,50 kr fee."
-          }
-        ]
+        "buy": [],
+        "fees": "0.00 SEK",
+        "baselineExpectedLoss": "16817.67 SEK",
+        "withOptionsExpectedLoss": "16817.67 SEK",
+        "options": []
       }
     },
     {
       "step": "options buy",
-      "command": "curl -s -X POST http://localhost:8823/api/markets/m-3594211f-ae8/options/buy -H 'content-type: application/json' -d '{}'",
+      "command": "curl -s -X POST http://localhost:8823/api/markets/m-f16ecc54-b22/options/buy -H 'content-type: application/json' -d '{}'",
       "status": 200,
-      "ms": 20,
+      "ms": 148,
       "result": {
-        "purchased": [
-          "opt:obl:plan-1d100d7e:1:o-orebro"
-        ]
+        "purchased": []
       }
     },
     {
       "step": "buyer approves payment (grants payment authority for this agreement version only)",
-      "command": "curl -s -X POST http://localhost:8823/api/agreements/agr:plan-1d100d7e/approve-payment -H 'content-type: application/json' -d '{\"market\":\"m-3594211f-ae8\",\"payee\":\"a-soderberg\",\"termsHash\":\"136343e02dc8d3ebc390c45905ac0115cddd84da6abc13c647277a7f590586d0\",\"amount\":{\"currency\":\"SEK\",\"minor\":540000}}'",
+      "command": "curl -s -X POST http://localhost:8823/api/agreements/agr:plan-1d100d7e/approve-payment -H 'content-type: application/json' -d '{\"market\":\"m-f16ecc54-b22\",\"payee\":\"a-soderberg\",\"termsHash\":\"278a39cb8af6f6f7de3e75ed69ede676d9eacaf5fed9b64413e17d360038951e\",\"amount\":{\"currency\":\"SEK\",\"minor\":540000}}'",
       "status": 200,
-      "ms": 22,
+      "ms": 52,
       "result": {
         "payee": "a-soderberg",
         "amount": "5400.00 SEK",
         "obligations": [
           "obl:plan-1d100d7e:0"
         ],
-        "expiresAt": "2026-11-12T16:02:16.805Z",
+        "expiresAt": "2026-11-12T17:38:48.213Z",
         "approvalToken": "[redacted]"
       }
     },
     {
       "step": "order without approval (refused)",
-      "command": "curl -s -X POST http://localhost:8823/api/payments/orders -H 'content-type: application/json' -d '{\"market\":\"m-3594211f-ae8\",\"agreementId\":\"agr:plan-1d100d7e\"}'",
+      "command": "curl -s -X POST http://localhost:8823/api/payments/orders -H 'content-type: application/json' -d '{\"market\":\"m-f16ecc54-b22\",\"agreementId\":\"agr:plan-1d100d7e\"}'",
       "status": 403,
-      "ms": 16,
+      "ms": 87,
       "result": {
         "error": {
           "code": "approval_required",
@@ -758,26 +753,26 @@
     },
     {
       "step": "create PayPal order",
-      "command": "curl -s -X POST http://localhost:8823/api/payments/orders -H 'content-type: application/json' -d '{\"approvalToken\":\"[redacted]\",\"market\":\"m-3594211f-ae8\"}'",
+      "command": "curl -s -X POST http://localhost:8823/api/payments/orders -H 'content-type: application/json' -d '{\"approvalToken\":\"[redacted]\",\"market\":\"m-f16ecc54-b22\"}'",
       "status": 201,
-      "ms": 1289,
+      "ms": 2259,
       "result": {
-        "id": "pay-7f7d9c2b-c66",
+        "id": "pay-0acd85e6-d78",
         "state": "PAYER_ACTION_REQUIRED",
         "payee": "a-soderberg",
         "amount": "5400.00 SEK",
         "obligations": [
           "obl:plan-1d100d7e:0"
         ],
-        "operationKey": "046fccdc2f8aee45fe664ff0f8168efa",
+        "operationKey": "33bb85b0b9bbe1ab3087fabcc86471b1",
         "paypal": {
           "env": "sandbox",
-          "orderId": "23063349M86940328",
+          "orderId": "4YV33419KB694145X",
           "status": "PAYER_ACTION_REQUIRED",
           "orderStatus": "PAYER_ACTION_REQUIRED",
           "captured": null,
           "debugIds": [
-            "f20924591eba4"
+            "f566747c8ab11"
           ],
           "approveHost": "www.sandbox.paypal.com"
         }
@@ -785,9 +780,9 @@
     },
     {
       "step": "capture before buyer approval (refused)",
-      "command": "curl -s -X POST http://localhost:8823/api/payments/pay-7f7d9c2b-c66/capture",
+      "command": "curl -s -X POST http://localhost:8823/api/payments/pay-0acd85e6-d78/capture",
       "status": 409,
-      "ms": 943,
+      "ms": 1004,
       "result": {
         "error": {
           "code": "not_approved",
@@ -798,7 +793,7 @@
     {
       "step": "sandbox test buyer approves on PayPal checkout (test harness, headless browser)",
       "status": "completed",
-      "ms": 16321,
+      "ms": 14034,
       "result": {
         "steps": [
           "checkout-opened",
@@ -813,29 +808,29 @@
     },
     {
       "step": "independent fetch after approval",
-      "command": "curl -s -X GET http://localhost:8823/api/payments/pay-7f7d9c2b-c66",
+      "command": "curl -s -X GET http://localhost:8823/api/payments/pay-0acd85e6-d78",
       "status": 200,
-      "ms": 369,
+      "ms": 464,
       "result": {
-        "id": "pay-7f7d9c2b-c66",
+        "id": "pay-0acd85e6-d78",
         "state": "APPROVED",
         "payee": "a-soderberg",
         "amount": "5400.00 SEK",
         "obligations": [
           "obl:plan-1d100d7e:0"
         ],
-        "operationKey": "046fccdc2f8aee45fe664ff0f8168efa",
+        "operationKey": "33bb85b0b9bbe1ab3087fabcc86471b1",
         "paypal": {
           "env": "sandbox",
-          "orderId": "23063349M86940328",
+          "orderId": "4YV33419KB694145X",
           "status": "APPROVED",
           "orderStatus": "APPROVED",
           "captured": null,
-          "lastFetchedAt": "2026-11-12T15:47:36.073Z",
+          "lastFetchedAt": "2026-11-12T17:24:06.313Z",
           "debugIds": [
-            "f20924591eba4",
-            "f518495217dcb",
-            "f34082333e8cf"
+            "f566747c8ab11",
+            "f260575acbf86",
+            "f109484c79f0c"
           ],
           "approveHost": "www.sandbox.paypal.com"
         }
@@ -843,32 +838,32 @@
     },
     {
       "step": "capture",
-      "command": "curl -s -X POST http://localhost:8823/api/payments/pay-7f7d9c2b-c66/capture",
+      "command": "curl -s -X POST http://localhost:8823/api/payments/pay-0acd85e6-d78/capture",
       "status": 200,
-      "ms": 1512,
+      "ms": 1883,
       "result": {
-        "id": "pay-7f7d9c2b-c66",
+        "id": "pay-0acd85e6-d78",
         "state": "CAPTURE_COMPLETED",
         "payee": "a-soderberg",
         "amount": "5400.00 SEK",
         "obligations": [
           "obl:plan-1d100d7e:0"
         ],
-        "operationKey": "046fccdc2f8aee45fe664ff0f8168efa",
+        "operationKey": "33bb85b0b9bbe1ab3087fabcc86471b1",
         "paypal": {
           "env": "sandbox",
-          "orderId": "23063349M86940328",
+          "orderId": "4YV33419KB694145X",
           "status": "COMPLETED",
           "orderStatus": "COMPLETED",
-          "captureId": "60G992738V5608927",
+          "captureId": "4YR77818718711726",
           "captureStatus": "COMPLETED",
           "captured": "5400.00 SEK",
-          "lastFetchedAt": "2026-11-12T15:47:36.073Z",
+          "lastFetchedAt": "2026-11-12T17:24:06.313Z",
           "debugIds": [
-            "f20924591eba4",
-            "f518495217dcb",
-            "f34082333e8cf",
-            "f3408239c4bba"
+            "f566747c8ab11",
+            "f260575acbf86",
+            "f109484c79f0c",
+            "f109484bdd38c"
           ],
           "approveHost": "www.sandbox.paypal.com"
         }
@@ -876,53 +871,174 @@
     },
     {
       "step": "independent fetch after capture",
-      "command": "curl -s -X GET http://localhost:8823/api/payments/pay-7f7d9c2b-c66",
+      "command": "curl -s -X GET http://localhost:8823/api/payments/pay-0acd85e6-d78",
       "status": 200,
       "ms": 1038,
       "result": {
-        "id": "pay-7f7d9c2b-c66",
+        "id": "pay-0acd85e6-d78",
         "state": "CAPTURE_COMPLETED",
         "payee": "a-soderberg",
         "amount": "5400.00 SEK",
         "obligations": [
           "obl:plan-1d100d7e:0"
         ],
-        "operationKey": "046fccdc2f8aee45fe664ff0f8168efa",
+        "operationKey": "33bb85b0b9bbe1ab3087fabcc86471b1",
         "paypal": {
           "env": "sandbox",
-          "orderId": "23063349M86940328",
+          "orderId": "4YV33419KB694145X",
           "status": "COMPLETED",
           "orderStatus": "COMPLETED",
-          "captureId": "60G992738V5608927",
+          "captureId": "4YR77818718711726",
           "captureStatus": "COMPLETED",
           "captured": "5400.00 SEK",
-          "lastFetchedAt": "2026-11-12T15:47:38.619Z",
+          "lastFetchedAt": "2026-11-12T17:24:09.221Z",
           "debugIds": [
-            "f20924591eba4",
-            "f518495217dcb",
-            "f34082333e8cf",
-            "f3408239c4bba",
-            "f28491871f041"
+            "f566747c8ab11",
+            "f260575acbf86",
+            "f109484c79f0c",
+            "f109484bdd38c",
+            "f2240879ea658"
           ],
           "approveHost": "www.sandbox.paypal.com"
         }
       }
     },
     {
-      "step": "disrupt",
-      "command": "curl -s -X POST http://localhost:8823/api/markets/m-3594211f-ae8/disrupt -H 'content-type: application/json' -d '{\"kind\":\"withdraw\",\"actor\":\"a-lindqvist\",\"offer\":\"joint:shared:o-roslagen>o-lindqvist\",\"detail\":\"Lindqvists Transport loses its Friday driver and withdraws from the shared van route.\",\"at\":\"2026-11-18T12:00:00.000Z\"}'",
+      "step": "buyer approves full refund",
+      "command": "curl -s -X POST http://localhost:8823/api/payments/pay-0acd85e6-d78/approve-refund -H 'content-type: application/json' -d '{}'",
       "status": 200,
-      "ms": 30,
+      "ms": 44,
+      "result": {
+        "amount": "5400.00 SEK",
+        "approvalToken": "[redacted]"
+      }
+    },
+    {
+      "step": "full refund",
+      "command": "curl -s -X POST http://localhost:8823/api/payments/pay-0acd85e6-d78/refund -H 'content-type: application/json' -d '{\"approvalToken\":\"[redacted]\"}'",
+      "status": 409,
+      "ms": 1568,
+      "result": {
+        "error": {
+          "code": "refund_denied",
+          "message": "PayPal declined the refund: the merchant PayPal account does not hold enough funds in this currency. Nothing was refunded; you can approve the refund again later."
+        }
+      }
+    },
+    {
+      "step": "buyer approves partial refund",
+      "command": "curl -s -X POST http://localhost:8823/api/payments/pay-0acd85e6-d78/approve-refund -H 'content-type: application/json' -d '{\"amount\":{\"currency\":\"SEK\",\"minor\":10000}}'",
+      "status": 200,
+      "ms": 14,
+      "result": {
+        "amount": "100.00 SEK",
+        "approvalToken": "[redacted]"
+      }
+    },
+    {
+      "step": "refund",
+      "command": "curl -s -X POST http://localhost:8823/api/payments/pay-0acd85e6-d78/refund -H 'content-type: application/json' -d '{\"approvalToken\":\"[redacted]\"}'",
+      "status": 200,
+      "ms": 3125,
+      "result": {
+        "id": "pay-0acd85e6-d78",
+        "state": "REFUND_COMPLETED",
+        "payee": "a-soderberg",
+        "amount": "5400.00 SEK",
+        "obligations": [
+          "obl:plan-1d100d7e:0"
+        ],
+        "operationKey": "33bb85b0b9bbe1ab3087fabcc86471b1",
+        "paypal": {
+          "env": "sandbox",
+          "orderId": "4YV33419KB694145X",
+          "status": "COMPLETED",
+          "orderStatus": "COMPLETED",
+          "captureId": "4YR77818718711726",
+          "captureStatus": "COMPLETED",
+          "captured": "5400.00 SEK",
+          "lastFetchedAt": "2026-11-12T17:24:09.221Z",
+          "debugIds": [
+            "f566747c8ab11",
+            "f260575acbf86",
+            "f109484c79f0c",
+            "f109484bdd38c",
+            "f2240879ea658",
+            "f416467f15499",
+            "f530036b93201"
+          ],
+          "approveHost": "www.sandbox.paypal.com"
+        },
+        "refunds": [
+          {
+            "id": "71L8413432035814T",
+            "amount": "100.00 SEK",
+            "status": "COMPLETED"
+          }
+        ],
+        "issue": "REFUND_FAILED_INSUFFICIENT_FUNDS"
+      }
+    },
+    {
+      "step": "independent fetch after refund",
+      "command": "curl -s -X GET http://localhost:8823/api/payments/pay-0acd85e6-d78",
+      "status": 200,
+      "ms": 550,
+      "result": {
+        "id": "pay-0acd85e6-d78",
+        "state": "REFUND_COMPLETED",
+        "payee": "a-soderberg",
+        "amount": "5400.00 SEK",
+        "obligations": [
+          "obl:plan-1d100d7e:0"
+        ],
+        "operationKey": "33bb85b0b9bbe1ab3087fabcc86471b1",
+        "paypal": {
+          "env": "sandbox",
+          "orderId": "4YV33419KB694145X",
+          "status": "COMPLETED",
+          "orderStatus": "COMPLETED",
+          "captureId": "4YR77818718711726",
+          "captureStatus": "PARTIALLY_REFUNDED",
+          "captured": "5400.00 SEK",
+          "lastFetchedAt": "2026-11-12T17:24:14.553Z",
+          "debugIds": [
+            "f566747c8ab11",
+            "f260575acbf86",
+            "f109484c79f0c",
+            "f109484bdd38c",
+            "f2240879ea658",
+            "f416467f15499",
+            "f530036b93201",
+            "f519675731d8a"
+          ],
+          "approveHost": "www.sandbox.paypal.com"
+        },
+        "refunds": [
+          {
+            "id": "71L8413432035814T",
+            "amount": "100.00 SEK",
+            "status": "COMPLETED"
+          }
+        ]
+      }
+    },
+    {
+      "step": "disrupt",
+      "command": "curl -s -X POST http://localhost:8823/api/markets/m-f16ecc54-b22/disrupt -H 'content-type: application/json' -d '{\"kind\":\"withdraw\",\"actor\":\"a-lindqvist\",\"offer\":\"joint:shared:o-roslagen>o-lindqvist\",\"detail\":\"Lindqvists Transport loses its Friday driver and withdraws from the shared van route.\",\"at\":\"2026-11-18T12:00:00.000Z\"}'",
+      "status": 200,
+      "ms": 22,
       "result": {
         "disruption": {
-          "id": "d-5b35f2d8",
+          "id": "d-d8a94c60",
           "kind": "withdraw",
           "actor": "a-lindqvist",
           "detail": "Lindqvists Transport loses its Friday driver and withdraws from the shared van route.",
           "at": "2026-11-18T12:00:00.000Z"
         },
         "affected": [
-          "obl:plan-1d100d7e:4"
+          "obl:plan-1d100d7e:4.0",
+          "obl:plan-1d100d7e:4.1"
         ],
         "atRisk": [],
         "endangeredPayments": []
@@ -930,22 +1046,22 @@
     },
     {
       "step": "exercise standby option",
-      "command": "curl -s -X POST http://localhost:8823/api/markets/m-3594211f-ae8/options/exercise",
+      "command": "curl -s -X POST http://localhost:8823/api/markets/m-f16ecc54-b22/options/exercise",
       "status": 200,
-      "ms": 21,
+      "ms": 19,
       "result": {
         "exercised": false,
         "absorbed": false,
-        "reason": "No purchased option keeps every other obligation and the deadline; run the full recovery.",
+        "reason": "No purchased option to exercise.",
         "attempts": [],
         "amendment": null
       }
     },
     {
       "step": "recover",
-      "command": "curl -s -X POST http://localhost:8823/api/markets/m-3594211f-ae8/recover",
+      "command": "curl -s -X POST http://localhost:8823/api/markets/m-f16ecc54-b22/recover",
       "status": 200,
-      "ms": 7597,
+      "ms": 7076,
       "result": {
         "feasible": true,
         "kept": [
@@ -956,7 +1072,8 @@
         ],
         "amended": [],
         "cancelled": [
-          "obl:plan-1d100d7e:4"
+          "obl:plan-1d100d7e:4.0",
+          "obl:plan-1d100d7e:4.1"
         ],
         "added": [
           {
@@ -978,13 +1095,13 @@
           },
           {
             "description": "Keep the original plan unchanged",
-            "reason": "Relies on Lindqvists Transport, which can no longer deliver. Uses Lindqvists Transport, whose offer is no longer available. Offer joint:shared:o-roslagen>o-lindqvist does not exist.",
+            "reason": "Relies on Roslagens Åkeri, which can no longer deliver. Uses Roslagens Åkeri, whose offer is no longer available. Offer joint:shared:o-roslagen>o-lindqvist does not exist.",
             "extraCost": "0.00 SEK",
             "slipHours": 0
           },
           {
             "description": "Replace with Stockholm Expressfrakt 500",
-            "reason": "Costs 5940000, above the budget of 5500000. Total 59 400 kr exceeds the budget of 55 000 kr. Total 59 400 kr exceeds the spending authority of 55 000 kr.",
+            "reason": "Costs 59 400 kr, above the budget of 55 000 kr. Total 59 400 kr exceeds the budget of 55 000 kr. Total 59 400 kr exceeds the spending authority of 55 000 kr.",
             "extraCost": "6800.00 SEK",
             "slipHours": 0
           }
@@ -1031,13 +1148,13 @@
     },
     {
       "step": "commit recovery",
-      "command": "curl -s -X POST http://localhost:8823/api/markets/m-3594211f-ae8/recover/commit -H 'content-type: application/json' -d '{\"termsHash\":\"04f6616eb0efee0a0243abfd828c15c6cbdb7a783f146e4d18cdb75036405292\"}'",
+      "command": "curl -s -X POST http://localhost:8823/api/markets/m-f16ecc54-b22/recover/commit -H 'content-type: application/json' -d '{\"termsHash\":\"373c8ca73ed7a32f69f2e072c7c6bf5ede855ca21124779755aefe86ad07378b\"}'",
       "status": 200,
-      "ms": 24,
+      "ms": 25,
       "result": {
         "version": 2,
         "state": "COMMITTED",
-        "termsHash": "04f6616eb0efee0a0243abfd828c15c6cbdb7a783f146e4d18cdb75036405292",
+        "termsHash": "373c8ca73ed7a32f69f2e072c7c6bf5ede855ca21124779755aefe86ad07378b",
         "obligations": [
           {
             "id": "obl:plan-1d100d7e:0",
@@ -1060,7 +1177,12 @@
             "state": "ACTIVE"
           },
           {
-            "id": "obl:agr:plan-1d100d7e:v2:0",
+            "id": "obl:agr:plan-1d100d7e:v2:0.0",
+            "actor": "a-roslagen",
+            "state": "ACTIVE"
+          },
+          {
+            "id": "obl:agr:plan-1d100d7e:v2:0.1",
             "actor": "a-malardalen",
             "state": "ACTIVE"
           }
@@ -1069,27 +1191,27 @@
     },
     {
       "step": "events",
-      "command": "curl -s -X GET http://localhost:8823/api/markets/m-3594211f-ae8/events?format=json",
+      "command": "curl -s -X GET http://localhost:8823/api/markets/m-f16ecc54-b22/events?format=json",
       "status": 200,
-      "ms": 18,
+      "ms": 22,
       "result": {
-        "total": 61,
+        "total": 63,
         "byType": {
           "world.created": 1,
           "solve.completed": 3,
           "intervention.found": 2,
           "claim.challenged": 1,
-          "negotiation.message": 27,
+          "negotiation.message": 25,
           "negotiation.decision": 5,
-          "agreement.state": 4,
-          "obligation.state": 11,
+          "agreement.state": 3,
+          "obligation.state": 14,
           "intent.compiled": 1,
-          "payment.state": 3,
+          "payment.state": 5,
           "disruption.applied": 1,
           "recovery.proposed": 1,
           "recovery.committed": 1
         },
-        "withCauses": 60,
+        "withCauses": 62,
         "sources": [
           "synthetic-market",
           "solver",
@@ -1100,7 +1222,7 @@
     },
     {
       "step": "trace payment",
-      "command": "curl -s -X GET http://localhost:8823/api/markets/m-3594211f-ae8/trace/pay-7f7d9c2b-c66",
+      "command": "curl -s -X GET http://localhost:8823/api/markets/m-f16ecc54-b22/trace/pay-0acd85e6-d78",
       "status": 200,
       "ms": 17,
       "result": [
@@ -1196,39 +1318,53 @@
           "what": ""
         },
         {
-          "seq": 24,
+          "seq": 25,
           "type": "agreement.state",
           "source": "solver",
           "causes": 2,
           "what": "COMMITTED"
         },
         {
-          "seq": 25,
+          "seq": 26,
           "type": "obligation.state",
           "source": "solver",
           "causes": 1,
           "what": "ACTIVE"
         },
         {
-          "seq": 36,
+          "seq": 33,
           "type": "payment.state",
           "source": "paypal-sandbox",
           "causes": 2,
           "what": "PAYER_ACTION_REQUIRED"
         },
         {
-          "seq": 37,
+          "seq": 34,
           "type": "payment.state",
           "source": "paypal-sandbox",
           "causes": 1,
           "what": "APPROVED"
         },
         {
-          "seq": 38,
+          "seq": 35,
           "type": "payment.state",
           "source": "paypal-sandbox",
           "causes": 1,
           "what": "CAPTURE_COMPLETED"
+        },
+        {
+          "seq": 36,
+          "type": "payment.state",
+          "source": "paypal-sandbox",
+          "causes": 1,
+          "what": "REFUND_DENIED"
+        },
+        {
+          "seq": 37,
+          "type": "payment.state",
+          "source": "paypal-sandbox",
+          "causes": 1,
+          "what": "REFUND_COMPLETED"
         }
       ]
     }

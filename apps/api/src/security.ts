@@ -43,6 +43,8 @@ export class AiBudget {
 
 export interface ApprovalClaim {
   kind: 'pay' | 'refund';
+  /** The buyer session the approval was given in; agreement ids can repeat across sessions of the same market template. */
+  market?: string;
   agreement: string;
   subject: string; // payee actor for pay, payment id for refund
   termsHash: string;

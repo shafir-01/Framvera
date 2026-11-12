@@ -121,15 +121,22 @@ export function registerDepth(app: Hono, ctx: DepthCtx) {
   });
 
   /** The buyer chooses which quoted options to hold; only quotes the supplier already signed can be bought. */
-  app.post('/api/markets/:id/options/buy', async (c) => {
-    const s = ctx.session(c.req.param('id'));
-    committed(s);
-    const b = await ctx.body(c);
+  /** The buyer chooses which quoted options to hold; only quotes the supplier already signed can be bought. */
+  const buy = (s: Session, b: any) => {
     const h = held(s);
     if (!h.options) throw ctx.fail(409, 'state', 'Look for standby capacity first');
-    if (s.intent.authority?.mayReserve === false) throw ctx.fail(403, 'scope', 'The buyer has not allowed reservations');
-    const buy: string[] = Array.isArray(b.options) ? b.options.filter((x: unknown) => typeof x === 'string') : (h.valuation?.buy ?? []);
-    const options = opt('acceptOptions')(h.options, buy, {});
+    if (!s.intent.authority?.mayReserve) throw ctx.fail(403, 'scope', 'The buyer has not allowed reservations');
+    const ids: string[] = Array.isArray(b.options) ? b.options.filter((x: unknown) => typeof x === 'string') : (h.valuation?.buy ?? []);
+    // Fees are commitments too: the plan plus every held option fee must stay inside the budget and the spending limit.
+    const a = s.agreement!;
+    const planMinor = a.obligations.filter((o) => o.state !== 'CANCELLED' && o.state !== 'REPLACED').reduce((t, o) => t + o.amount.minor, 0);
+    const feeOf = (o: any) => (o?.terms?.fee?.minor ?? 0) as number;
+    const heldFees = h.options.filter((o: any) => o.status === 'purchased' || o.status === 'exercised').reduce((t: number, o: any) => t + feeOf(o), 0);
+    const newFees = h.options.filter((o: any) => o.status === 'quoted' && ids.includes(o.id)).reduce((t: number, o: any) => t + feeOf(o), 0);
+    const total = planMinor + heldFees + newFees;
+    const caps = [s.intent.budget?.minor, s.intent.authority?.maxSpend?.minor].filter((x): x is number => typeof x === 'number');
+    if (caps.some((cap) => total > cap)) throw ctx.fail(403, 'over_limit', 'These standby fees would take committed spending past the budget or the spending limit');
+    const options = opt('acceptOptions')(h.options, ids, {});
     s.options = { ...h, options };
     store.save(s);
     const bought = options.filter((o: any) => o.status === 'purchased');
@@ -137,7 +144,39 @@ export function registerDepth(app: Hono, ctx: DepthCtx) {
       const causes = store.causal.get(s.id, [...(o.messages ?? []).map((m: any) => `msg:${m.id}`), 'agreement']);
       store.emit(s.id, 'agreement.state', { agreement: o.agreement, state: o.agreement.state, termsHash: o.agreement.termsHash, option: o.id }, 'buyer', { causes });
     }
-    return c.json({ options, purchased: bought.map((o: any) => o.id) });
+    return { options, purchased: bought.map((o: any) => o.id) };
+  };
+
+  app.post('/api/markets/:id/options/buy', async (c) => {
+    const s = ctx.session(c.req.param('id'));
+    committed(s);
+    return c.json(buy(s, await ctx.body(c)));
+  });
+
+  /** One call after commit: standby quotes from supplier policies and their value, keyed by the agreement. */
+  const sessionOfAgreement = (agreementId: string, hint?: string) => {
+    const s = hint ? ctx.session(hint) : [...store.sessions.values()].find((x) => x.agreement?.id === agreementId);
+    if (!s || s.agreement?.id !== agreementId) throw ctx.fail(404, 'not_found', 'Agreement not found');
+    return s;
+  };
+
+  app.post('/api/agreements/:id/options', async (c) => {
+    const b = await ctx.body(c);
+    const s = sessionOfAgreement(c.req.param('id'), typeof b.market === 'string' ? b.market : undefined);
+    const agreement = committed(s);
+    const discovery = await opt('discoverOptions')(s.world, s.intent, agreement, { truth: ctx.truthFor(s) });
+    for (const o of discovery.options ?? []) for (const m of o.messages ?? []) store.emit(s.id, 'negotiation.message', { ...m, option: o.id }, m.type === 'RequestStandby' ? 'solver' : 'synthetic-market', { actor: m.from });
+    const valuation = await opt('valueOptions')(s.world, s.intent, agreement, discovery.options ?? [], { seed: int(b.seed, 1, 1_000_000, 20261112), ...(Number.isInteger(b.scenarios) ? { scenarios: Math.min(2000, b.scenarios) } : {}) });
+    s.options = { discovery: { ...discovery, options: undefined }, options: discovery.options, valuation };
+    store.save(s);
+    return c.json({ discovery, valuation });
+  });
+
+  app.post('/api/agreements/:id/options/accept', async (c) => {
+    const b = await ctx.body(c);
+    const s = sessionOfAgreement(c.req.param('id'), typeof b.market === 'string' ? b.market : undefined);
+    committed(s);
+    return c.json(buy(s, b));
   });
 
   app.post('/api/markets/:id/options/exercise', async (c) => {

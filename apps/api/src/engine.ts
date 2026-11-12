@@ -97,6 +97,23 @@ export function standingTermsProblem(o: Obligation, offer: Offer | undefined): s
   return null;
 }
 
+const fmtMinor = (minor: number, currency: string): string => {
+  const abs = Math.abs(minor);
+  const whole = Math.floor(abs / 100).toString().replace(/\B(?=(\d{3})+(?!\d))/g, ' ');
+  const frac = abs % 100 ? `,${String(abs % 100).padStart(2, '0')}` : '';
+  return `${minor < 0 ? '-' : ''}${whole}${frac} ${currency === 'SEK' ? 'kr' : currency}`;
+};
+let contractsFmt: ((m: { currency: string; minor: number }) => string) | undefined;
+
+/** Plain-language amounts in reasons shown to people: raw minor units become formatted money. */
+export function moneyText(currency: string) {
+  const f = (minor: number) => (contractsFmt ? contractsFmt({ currency, minor }) : fmtMinor(minor, currency));
+  return (t: string) =>
+    t
+      .replace(/Costs (-?\d+), above the budget of (-?\d+)\./g, (_, a, b) => `Costs ${f(Number(a))}, above the budget of ${f(Number(b))}.`)
+      .replace(/costs (-?\d+) more in minor units\./g, (_, a) => `costs ${f(Number(a))} more.`);
+}
+
 export async function loadEngine(): Promise<Engine> {
   const raw: Record<string, Record<string, any>> = {};
   for (const m of [...CORE, ...DEPTH]) raw[m] = await load(m);
@@ -144,7 +161,12 @@ export async function loadEngine(): Promise<Engine> {
   const negotiate = fn(negotiation!, 'negotiate');
   if (negotiate) {
     e.negotiate = async (world: World, intent: Intent, truth: any, opts: any = {}) => {
+      // A buyer-chosen what-if set replaces the search: the loop negotiates exactly these interventions.
+      const chosen = Array.isArray(opts.chosen) && e.solve && e.applyConcessions && e.verifyPlan
+        ? { solver: { solve: e.solve, applyConcessions: e.applyConcessions, verifyPlan: e.verifyPlan, findInterventions: async () => opts.chosen } }
+        : {};
       const run = await negotiate(world, intent, truth, {
+        ...chosen,
         ...(opts.maxQuestions ? { budget: opts.maxQuestions } : {}),
         ...(opts.terminal ? { terminal: opts.terminal } : {}),
         ...(opts.buyerConsent ? { buyerConsent: opts.buyerConsent } : {}),
@@ -223,11 +245,15 @@ export async function loadEngine(): Promise<Engine> {
       const r = await recover(agreement, world, intent, d, opts);
       const cands: any[] = Array.isArray(r.candidates) ? r.candidates.filter((c: any) => !c.permissible) : [];
       const currency = intent.budget.currency;
+      const text = moneyText(currency);
       r.rejected = (r.rejected ?? []).map((x: any) => {
         const c = cands.find((y) => y.description === x.description);
-        if (!c || x.extraCost) return x;
-        return { ...x, extraCost: { currency, minor: c.extraCostMinor }, slipHours: c.slipHours };
+        const reason = text(String(x.reason ?? ''));
+        if (!c || x.extraCost) return { ...x, reason };
+        return { ...x, reason, extraCost: { currency, minor: c.extraCostMinor }, slipHours: c.slipHours };
       });
+      if (Array.isArray(r.candidates)) r.candidates = r.candidates.map((c: any) => ({ ...c, reasons: (c.reasons ?? []).map((t: string) => text(t)) }));
+      if (r.counterfactual?.text) r.counterfactual = { ...r.counterfactual, text: text(r.counterfactual.text) };
       return r;
     };
   }
@@ -242,6 +268,8 @@ export async function loadEngine(): Promise<Engine> {
   if (pstate) e.paymentState = pstate;
   const capture = fn(paypal!, 'capturePayment');
   if (capture) e.payments = { open: fn(paypal!, 'openOrder'), capture, refund: fn(paypal!, 'refundPayment'), reconcile: fn(paypal!, 'reconcile'), refundable: fn(paypal!, 'refundable') };
+  const fmt = fn(all, 'fmt');
+  if (fmt) contractsFmt = fmt;
   const hash = fn(all, 'hashTerms');
   if (hash) e.hashTerms = hash;
 

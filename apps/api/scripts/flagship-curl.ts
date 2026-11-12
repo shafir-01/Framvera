@@ -130,6 +130,21 @@ try {
     record('capture', cap, cap.status === 200 ? pay(cap.json) : cap.json);
     const f2 = curl('independent fetch', 'GET', `/api/payments/${pi.id}`);
     record('independent fetch after capture', f2, pay(f2.json));
+    const fullAr = curl('buyer approves full refund', 'POST', `/api/payments/${pi.id}/approve-refund`, {});
+    record('buyer approves full refund', fullAr, fullAr.status === 200 ? { amount: money(fullAr.json.amount), approvalToken: '[redacted]' } : fullAr.json);
+    if (fullAr.status === 200) {
+      const full = curl('full refund', 'POST', `/api/payments/${pi.id}/refund`, { approvalToken: fullAr.json.approvalToken });
+      record('full refund', full, full.status === 200 ? { ...pay(full.json), refunds: full.json.paypal?.refunds?.map((x: any) => ({ id: x.id, amount: money(x.amount), status: x.status })) } : full.json);
+    }
+    const part = { currency: amount.currency, minor: Math.min(10_000, amount.minor) };
+    const ar = curl('buyer approves refund', 'POST', `/api/payments/${pi.id}/approve-refund`, { amount: part });
+    record('buyer approves partial refund', ar, ar.status === 200 ? { amount: money(ar.json.amount), approvalToken: '[redacted]' } : ar.json);
+    if (ar.status === 200) {
+      const rf = curl('refund', 'POST', `/api/payments/${pi.id}/refund`, { approvalToken: ar.json.approvalToken });
+      record('refund', rf, rf.status === 200 ? { ...pay(rf.json), refunds: rf.json.paypal?.refunds?.map((x: any) => ({ id: x.id, amount: money(x.amount), status: x.status })), issue: rf.json.paypal?.issue } : rf.json);
+      const f3 = curl('independent fetch', 'GET', `/api/payments/${pi.id}`);
+      record('independent fetch after refund', f3, { ...pay(f3.json), refunds: f3.json.paypal?.refunds?.map((x: any) => ({ id: x.id, amount: money(x.amount), status: x.status })) });
+    }
   }
 
   const courier = agreement.obligations.find((o: any) => o.actor === 'a-lindqvist') ?? agreement.obligations.at(-1);

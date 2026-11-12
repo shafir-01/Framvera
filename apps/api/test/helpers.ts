@@ -44,26 +44,28 @@ export function stubEngine(): Engine {
   };
 }
 
+/** Minimal PayPal stand-in in the record shape the payments module reads (order and capture status verbatim). */
 export class TestGateway {
   orders = new Map<string, any>();
   created = 0;
   async createOrder(pi: any) {
     this.created += 1;
     const id = `ORD-${this.created}`;
-    const rec = { env: 'sandbox', orderId: id, refunds: [], status: 'CREATED', approveUrl: `https://sandbox.paypal.test/${id}`, debugIds: [] };
+    const rec = { env: 'sandbox', orderId: id, refunds: [], status: 'PAYER_ACTION_REQUIRED', orderStatus: 'PAYER_ACTION_REQUIRED', approveUrl: `https://sandbox.paypal.test/${id}`, debugIds: [] };
     this.orders.set(id, rec);
-    return rec;
+    return { ...pi.paypal, ...rec };
   }
   async getOrder(id: string) {
-    return { ...this.orders.get(id), status: 'APPROVED' };
+    const o = this.orders.get(id);
+    return o.captureId ? { ...o } : { ...o, status: 'APPROVED', orderStatus: 'APPROVED' };
   }
   async capture(pi: any) {
-    const rec = { ...this.orders.get(pi.paypal.orderId), status: 'COMPLETED', captureId: `CAP-${pi.paypal.orderId}` };
+    const rec = { ...this.orders.get(pi.paypal.orderId), status: 'COMPLETED', orderStatus: 'COMPLETED', captureStatus: 'COMPLETED', captureId: `CAP-${pi.paypal.orderId}`, captured: pi.charged };
     this.orders.set(pi.paypal.orderId, rec);
-    return rec;
+    return { ...pi.paypal, ...rec };
   }
   async refund(pi: any, amount: any) {
-    return { ...pi.paypal, refunds: [{ id: 'RF-1', amount, status: 'COMPLETED' }] };
+    return { ...pi.paypal, refunds: [...pi.paypal.refunds, { id: `RF-${pi.paypal.refunds.length + 1}`, amount, status: 'COMPLETED' }] };
   }
   async verifyWebhook(headers: Record<string, string>) {
     return headers['x-test-sig'] === 'valid';

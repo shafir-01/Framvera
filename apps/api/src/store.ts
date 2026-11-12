@@ -30,6 +30,8 @@ export interface Session {
   mechanisms?: Record<string, unknown>;
   /** Payment authority the buyer granted for one exact agreement version by approving it. */
   grants?: Record<string, { termsHash: string; at: string }>;
+  /** Refund requests PayPal refused, per payment; each new request gets its own PayPal-Request-Id. */
+  refundRefusals?: Record<string, number>;
   /** Scopes the buyer explicitly withheld; an approval never overrides these. */
   withheld?: string[];
 }
