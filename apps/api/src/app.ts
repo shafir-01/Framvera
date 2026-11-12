@@ -722,6 +722,15 @@ export function createApp(deps: Deps) {
   const KINDS = ['withdraw', 'capacity-drop', 'delay', 'price-change', 'claim-overturned', 'payment-failed'];
   const ids = (l: any[] | undefined) => (l ?? []).map((o: any) => (typeof o === 'string' ? o : o.id));
 
+  // The market's scripted withdrawal, offered only while that supplier still holds live work in the agreement.
+  app.get('/api/markets/:id/shock', (c) => {
+    const s = session(c.req.param('id'));
+    if (!s.agreement) return c.json({ shock: null });
+    const live = new Set(s.agreement.obligations.filter((o) => ['PENDING', 'ACTIVE', 'AT_RISK'].includes(o.state)).map((o) => o.actor));
+    const sh = ((truthFor(s)?.shocks ?? []) as Disruption[]).find((x) => x.kind === 'withdraw' && x.actor && live.has(x.actor));
+    return c.json({ shock: sh ? { actor: sh.actor, offer: sh.offer, detail: sh.detail } : null });
+  });
+
   app.post('/api/markets/:id/disrupt', async (c) => {
     const s = session(c.req.param('id'));
     const b = await body(c);

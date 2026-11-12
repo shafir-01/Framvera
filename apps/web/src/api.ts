@@ -257,6 +257,8 @@ export interface Api {
   approveRefund(payment: Id, amount?: Money): Promise<PaymentApproval>;
   refund(payment: Id, approvalToken: string): Promise<PaymentIntent>;
   disrupt(market: Id, d: { kind: Disruption['kind']; actor?: Id; offer?: Id; detail?: string }): Promise<DisruptResult>;
+  /** The market's scripted withdrawal, when its supplier still holds live work. */
+  shock(market: Id): Promise<{ actor: Id; offer?: Id; detail: string } | null>;
   recover(market: Id, disruption?: Id): Promise<RecoverResult>;
   commitRecovery(market: Id, recovery: Id): Promise<{ agreement: Agreement; changed?: unknown }>;
   events(market: Id): Promise<MarketEvent[]>;
@@ -470,6 +472,7 @@ export function httpApi(base = '', transport: Transport = { fetch: (...a) => fet
     approveRefund: (payment, amount) => call<PaymentApproval>('POST', `/api/payments/${enc(payment)}/approve-refund`, amount ? { amount } : {}),
     refund: (payment, approvalToken) => call<PaymentIntent>('POST', `/api/payments/${enc(payment)}/refund`, { approvalToken }, 60000),
     disrupt: async (market, d) => normDisrupt(await call('POST', `/api/markets/${enc(market)}/disrupt`, d)),
+    shock: async (market) => (await call('GET', `/api/markets/${enc(market)}/shock`)).shock ?? null,
     recover: async (market, disruption) => normRecovery(await call('POST', `/api/markets/${enc(market)}/recover`, disruption ? { disruption } : {}, 120000)),
     commitRecovery: async (market, recovery) => {
       const r = await call('POST', `/api/markets/${enc(market)}/recover/commit`, { recovery }, 60000);

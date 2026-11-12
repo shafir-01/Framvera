@@ -1,3 +1,4 @@
+import { useEffect, useState } from 'react';
 import { motion } from 'motion/react';
 import type { Id } from '@framvera/contracts';
 import { disruptionTarget, useStore } from '../store.tsx';
@@ -9,12 +10,26 @@ import { paid } from './Commit.tsx';
 import { KIND_LABEL } from '../lib/world.ts';
 
 export function Adapt() {
-  const { s, act, world } = useStore();
+  const { api, s, act, world } = useStore();
   const ag = s.agreement;
+  const marketId = s.market?.market;
+  const [shock, setShock] = useState<{ agreement: Id; target: { actor: Id; offer?: Id; detail: string } | null }>();
+  useEffect(() => {
+    if (!marketId || !ag?.id) return;
+    let on = true;
+    const agreement = ag.id;
+    api
+      .shock(marketId)
+      .then((target) => on && setShock({ agreement, target }))
+      .catch(() => on && setShock({ agreement, target: null }));
+    return () => {
+      on = false;
+    };
+  }, [api, marketId, ag?.id]);
   const plan = s.negotiation?.report?.plan ?? s.analysis?.report.plan;
   if (!ag || !s.market || !plan || !s.intent) return null;
   const negotiated = s.negotiation?.world ?? s.market.world;
-  const target = disruptionTarget(ag, negotiated);
+  const target = (shock?.agreement === ag.id ? shock.target : null) ?? disruptionTarget(ag, negotiated);
   const name = (id?: Id) => (world ?? negotiated).actors.find((a) => a.id === id)?.name ?? id ?? 'a supplier';
   const d = s.disruption;
   const rec = s.recovery?.recovery;
@@ -41,7 +56,7 @@ export function Adapt() {
       {!d ? (
         <div className="adapt-bar">
           <p>Framvera keeps every promise it can and changes only what it must.</p>
-          <button className="btn btn-break" onClick={() => void act.breakDeal()} disabled={s.busy === 'disrupt' || !target}>
+          <button className="btn btn-break" onClick={() => void act.breakDeal(target)} disabled={s.busy === 'disrupt' || !target}>
             {s.busy === 'disrupt' ? 'Breaking…' : 'Break the deal'}
           </button>
         </div>

@@ -119,7 +119,7 @@ export interface Actions {
   capture(payment: Id): Promise<PaymentIntent | undefined>;
   refreshPayment(payment: Id): Promise<void>;
   refund(payment: Id): Promise<PaymentIntent | undefined>;
-  breakDeal(): Promise<void>;
+  breakDeal(target?: { actor: Id; offer?: Id; detail?: string }): Promise<void>;
   commitRecovery(): Promise<void>;
   reset(): void;
   retryStatus(): void;
@@ -420,15 +420,15 @@ export function StoreProvider({ api, initialDraft, children }: { api: Api; initi
         dispatch({ type: 'busy' });
         return r;
       },
-      breakDeal: async () => {
+      breakDeal: async (chosen) => {
         const cur = ref.current;
         if (!cur.market || !cur.agreement) return;
         const market = cur.market.market;
         const world = cur.negotiation?.world ?? cur.market.world;
-        const target = disruptionTarget(cur.agreement, world);
+        const target: { actor: Id; offer?: Id; detail?: string } | undefined = chosen ?? disruptionTarget(cur.agreement, world);
         if (!target) return;
         const name = world.actors.find((a) => a.id === target.actor)?.name ?? target.actor;
-        const disruption = await step('disrupt', () => api.disrupt(market, { kind: 'withdraw', actor: target.actor, offer: target.offer, detail: `${name} withdrew from the agreement.` }));
+        const disruption = await step('disrupt', () => api.disrupt(market, { kind: 'withdraw', actor: target.actor, offer: target.offer, detail: target.detail ?? `${name} withdrew from the agreement.` }));
         if (!disruption) return;
         dispatch({ type: 'patch', patch: { disruption } });
         if (!disruption.world) {

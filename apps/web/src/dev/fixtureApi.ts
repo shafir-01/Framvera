@@ -63,6 +63,7 @@ export function fixtureApi(): Api {
       return [200, { ...pi, paypal: { ...pi.paypal, lastFetchedAt: new Date().toISOString() } }, 500];
     }
     if (path.endsWith('/disrupt')) return [200, fxDisrupt, 700];
+    if (path.endsWith('/shock')) return [200, { shock: null }, 100];
     if (path.endsWith('/recover')) return (advance('recover'), [200, fxRecover, 1400]);
     const tm = path.match(/\/trace\/([^/]+)$/);
     if (tm) {
