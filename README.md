@@ -23,7 +23,7 @@ Take the flagship market in this repository: 27 actors across printing, sourcing
 2. **Searches for the smallest change.** It finds the fewest negotiable adjustments across all suppliers and the buyer that make a plan exist, ranked by estimated cost.
 3. **Forms cooperation that did not exist.** Where one supplier cannot do a job alone, it composes a coalition, for example a printer and a courier sharing one pickup, with a payment split each member would rationally accept.
 4. **Asks the right question.** It sends a typed proposal to the supplier whose answer is worth most, and the supplier decides under its own private limits.
-5. **Re-solves and verifies.** Accepted changes produce a new world version. A second checker, sharing no code with the solver, confirms the plan.
+5. **Re-solves and verifies.** Accepted changes produce a new world version. A separate verifier re-checks the plan with plain arithmetic before anything is committed.
 6. **Commits and pays.** Terms are hashed, obligations are created, the buyer approves, and PayPal sandbox orders are created, captured and independently fetched.
 7. **Survives a failure.** When a supplier withdraws, only the affected commitments change. Accepted obligations are never broken, and the repair is the smallest one that works.
 
@@ -38,7 +38,7 @@ Take the flagship market in this repository: 27 actors across printing, sourcing
 - Mixed-integer solving with HiGHS, with lexicographic objectives (cost, then ready time).
 - Infeasible cores by deletion filter, marked `proven` only when the solver itself reported infeasibility.
 - Inverse feasibility search over negotiable fields, including the buyer's own flexibility.
-- Coalition synthesis with individual-rationality checks on the payment split.
+- Coalition synthesis with a proposed payment split for each member.
 - Independent plan verification by plain arithmetic.
 
 **Negotiate**
@@ -74,7 +74,7 @@ Take the flagship market in this repository: 27 actors across printing, sourcing
 | Money | Orders, captures and refunds are PayPal sandbox objects. The status shown is PayPal's own string, fetched again at read time, with the retrieval time. | The economic amount is a market figure. When a payment is charged in another currency, the conversion is stated beside it. |
 | Suppliers | A person can answer as a supplier through the seller terminal. | The generated suppliers answer from a deterministic private policy. They are labelled `synthetic-policy`. |
 | Market | Offers, capacity and prices are generated from a seed. | Every fact in the interface carries its source. Nothing generated is shown as a payment or as a real catalogue. |
-| AI | Claude turns the buyer's sentence into a typed intent and asks clarifying questions. | Its output is a proposal, validated before use. It has no vote on feasibility, on a supplier's consent or on payment. Without a model the same sentence is parsed deterministically and the interface says which path ran. |
+| AI | Claude turns the buyer's sentence into a typed intent and asks clarifying questions. | Its output is a proposal, validated before use. It has no vote on feasibility, on a supplier's consent or on payment. Without a model the same sentence is parsed deterministically. |
 
 The repository ships real sandbox evidence in `evidence/`: a captured and partly refunded order with independent fetches (`paypal-smoke.json`), a probe of what the sandbox account supports (`paypal-capabilities.json`) and a full API session with PayPal order and capture ids (`api-flagship.json`). PayPal integration is central rather than decorative: the obligations in an agreement are what the orders are built from, a refund is part of recovery, and a payment's state is part of the trace of the whole deal. Separate payees are paid by separate orders. They are not one atomic multi-merchant transaction and the interface does not present them as one.
 
@@ -142,7 +142,6 @@ Copy `.env.example` to `.env`. Values are read on the server only and never reac
 | `PAYPAL_WEBHOOK_ID` | Webhook id used to verify incoming PayPal events |
 | `ANTHROPIC_API_KEY` | Enables the live intent compiler; without it the deterministic parser runs |
 | `FRAMVERA_APPROVAL_SECRET` | Key for payment approval tokens; random per start if unset, so set it on any host that restarts |
-| `FRAMVERA_ADMIN_TOKEN` | Guards administrative routes |
 | `FRAMVERA_AI_ENABLED` | Kill switch for model calls |
 | `FRAMVERA_DAILY_AI_CALLS` | Daily cap on model calls |
 | `FRAMVERA_RATE_LIMIT`, `FRAMVERA_HEAVY_LIMIT` | Requests per minute per IP, general and for heavy routes |
@@ -223,6 +222,8 @@ packages/
   negotiation/    Question selection, supplier decisions, claim challenges, compiler
   obligations/    Ledger, agreements, disruption, recovery, payment state machine
   paypal/         Sandbox gateway, idempotency, reconciliation
+  mechanisms/     Reverse auction, exchange cycles, demand aggregation
+  options/        Standby options for obligations likely to fail
   referee/        Benchmark harness, baselines, ablations
 docs/             Architecture, demo script, verified contest rules
 evaluation/       Benchmark output (results.json, SUMMARY.md)
@@ -235,8 +236,6 @@ npm run typecheck
 npm test                       # all packages and the API
 npx vitest run packages/solver # one package
 ```
-
-A separate adversarial suite attacks the product from the outside: forged and replayed approval tokens, compiler output that tries to raise a spending limit, injection text in supplier descriptions, payment timeouts and duplicate webhooks, joint offers that double-book capacity, and randomly generated worlds checked for plans that fail verification. Run it with `npx vitest run --config tests/adversarial/vitest.config.ts` (about three minutes; it uses the real solver). It is kept out of `npm test` so that a finding under repair does not block the main suite.
 
 Property tests (fast-check) cover exact money arithmetic, and the PayPal tests cover idempotent replay, timeouts with unknown outcomes, refund bounds and webhook verification against a fake gateway. The API tests drive a full session through the HTTP layer, including the refusals: a missing, forged, tampered or replayed approval token, a wrong amount, a refund without its own approval, and a withheld spending scope.
 

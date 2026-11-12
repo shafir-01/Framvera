@@ -127,7 +127,7 @@ export async function loadEngine(): Promise<Engine> {
   const tpl: Record<string, Fn | undefined> = {
     flagship,
     exhibition: fn(market!, 'exhibitionWorld', 'exhibitionMarket'),
-    circular: fn(market!, 'circularWorld', 'circularMarket'),
+    circular: fn(market!, 'circularWorld', 'circularMarket', 'circularExchangeWorld'),
   };
   const registry = market!.TEMPLATES ?? market!.templates;
   if (registry && typeof registry === 'object') {
