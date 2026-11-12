@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-11-12T15:32:47.462Z",
+  "generatedAt": "2026-11-12T15:53:26.890Z",
   "heldOutSeeds": {
     "feasible": {
       "first": 910000,
@@ -16,7 +16,7 @@
   },
   "claim": {
     "framveraFeasible": [
-      16,
+      30,
       30
     ],
     "bestBaseline": {
@@ -39,7 +39,7 @@
       "family": "salvageable",
       "falseClaims": [
         0,
-        16
+        30
       ]
     },
     {
@@ -180,7 +180,7 @@
           17,
           30
         ],
-        "solveMsMean": 88.68666666666667
+        "solveMsMean": 89.41333333333337
       },
       {
         "strategy": "uniform-heuristic",
@@ -216,7 +216,7 @@
           17,
           30
         ],
-        "solveMsMean": 84.24666666666668
+        "solveMsMean": 90.70666666666665
       },
       {
         "strategy": "random-relaxations",
@@ -252,7 +252,7 @@
           16,
           29
         ],
-        "solveMsMean": 85.98666666666668
+        "solveMsMean": 88.14333333333333
       },
       {
         "strategy": "framvera",
@@ -288,7 +288,7 @@
           17,
           30
         ],
-        "solveMsMean": 85.1166666666667
+        "solveMsMean": 90.12333333333332
       },
       {
         "strategy": "framvera-no-coalitions",
@@ -324,7 +324,7 @@
           17,
           30
         ],
-        "solveMsMean": 86.5933333333333
+        "solveMsMean": 87.2
       },
       {
         "strategy": "framvera-no-voi",
@@ -360,7 +360,7 @@
           17,
           30
         ],
-        "solveMsMean": 86.26
+        "solveMsMean": 88.16000000000001
       },
       {
         "strategy": "framvera-no-claim-checks",
@@ -396,7 +396,7 @@
           17,
           30
         ],
-        "solveMsMean": 86.74
+        "solveMsMean": 87.64333333333333
       },
       {
         "strategy": "oracle",
@@ -432,7 +432,7 @@
           17,
           30
         ],
-        "solveMsMean": 85.39000000000001
+        "solveMsMean": 87.96666666666668
       }
     ],
     "salvageable": [
@@ -500,7 +500,7 @@
           0,
           0
         ],
-        "solveMsMean": 836.8933333333333
+        "solveMsMean": 869.56
       },
       {
         "strategy": "uniform-heuristic",
@@ -536,7 +536,7 @@
           0,
           1
         ],
-        "solveMsMean": 1004.5466666666667
+        "solveMsMean": 1022.5233333333333
       },
       {
         "strategy": "random-relaxations",
@@ -572,27 +572,27 @@
           0,
           4
         ],
-        "solveMsMean": 994.5233333333332
+        "solveMsMean": 968.8966666666668
       },
       {
         "strategy": "framvera",
         "label": "Framvera (full)",
         "hindsight": false,
         "feasible": [
-          16,
+          30,
           30
         ],
         "feasibleCi": [
-          0.3614201328152505,
-          0.6976787277587178
+          0.8864829086095221,
+          1
         ],
         "infeasibleToFeasible": [
-          16,
+          30,
           30
         ],
         "falseClaims": [
           0,
-          16
+          30
         ],
         "questionsMean": 2.033333333333333,
         "acceptance": [
@@ -601,14 +601,14 @@
         ],
         "costVsOracle": {
           "mean": 1,
-          "n": 16
+          "n": 30
         },
         "invariantViolations": 0,
         "recovery": [
-          1,
-          16
+          6,
+          30
         ],
-        "solveMsMean": 867.1900000000002
+        "solveMsMean": 917.9433333333334
       },
       {
         "strategy": "framvera-no-coalitions",
@@ -644,27 +644,27 @@
           1,
           19
         ],
-        "solveMsMean": 931.2199999999999
+        "solveMsMean": 983.85
       },
       {
         "strategy": "framvera-no-voi",
         "label": "Ablation: no value-of-information",
         "hindsight": false,
         "feasible": [
-          16,
+          30,
           30
         ],
         "feasibleCi": [
-          0.3614201328152505,
-          0.6976787277587178
+          0.8864829086095221,
+          1
         ],
         "infeasibleToFeasible": [
-          16,
+          30,
           30
         ],
         "falseClaims": [
           0,
-          16
+          30
         ],
         "questionsMean": 2.033333333333333,
         "acceptance": [
@@ -673,14 +673,14 @@
         ],
         "costVsOracle": {
           "mean": 1,
-          "n": 16
+          "n": 30
         },
         "invariantViolations": 0,
         "recovery": [
-          1,
-          16
+          6,
+          30
         ],
-        "solveMsMean": 943.0966666666667
+        "solveMsMean": 1026.0533333333335
       },
       {
         "strategy": "framvera-no-claim-checks",
@@ -716,7 +716,7 @@
           6,
           30
         ],
-        "solveMsMean": 888.7066666666667
+        "solveMsMean": 938.23
       },
       {
         "strategy": "oracle",
@@ -752,7 +752,7 @@
           6,
           30
         ],
-        "solveMsMean": 962.1233333333334
+        "solveMsMean": 1014.943333333333
       }
     ],
     "impossible": [
@@ -820,7 +820,7 @@
           0,
           0
         ],
-        "solveMsMean": 462.16
+        "solveMsMean": 430.9566666666667
       },
       {
         "strategy": "uniform-heuristic",
@@ -853,7 +853,7 @@
           0,
           0
         ],
-        "solveMsMean": 500.1766666666666
+        "solveMsMean": 457.5133333333333
       },
       {
         "strategy": "random-relaxations",
@@ -886,7 +886,7 @@
           0,
           0
         ],
-        "solveMsMean": 524.7766666666668
+        "solveMsMean": 489.90666666666664
       },
       {
         "strategy": "framvera",
@@ -919,7 +919,7 @@
           0,
           0
         ],
-        "solveMsMean": 453.2500000000001
+        "solveMsMean": 441.2733333333333
       },
       {
         "strategy": "framvera-no-coalitions",
@@ -952,7 +952,7 @@
           0,
           0
         ],
-        "solveMsMean": 472.27000000000004
+        "solveMsMean": 445.1633333333333
       },
       {
         "strategy": "framvera-no-voi",
@@ -985,7 +985,7 @@
           0,
           0
         ],
-        "solveMsMean": 454.8766666666666
+        "solveMsMean": 443.91666666666663
       },
       {
         "strategy": "framvera-no-claim-checks",
@@ -1018,7 +1018,7 @@
           0,
           0
         ],
-        "solveMsMean": 468.8966666666666
+        "solveMsMean": 436.31666666666666
       },
       {
         "strategy": "oracle",
@@ -1051,7 +1051,7 @@
           0,
           0
         ],
-        "solveMsMean": 450.9433333333333
+        "solveMsMean": 446.92333333333335
       }
     ]
   }

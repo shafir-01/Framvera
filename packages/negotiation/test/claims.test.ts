@@ -80,4 +80,17 @@ describe('injection text has no effect on selection', () => {
     const b = selectQuestions(dirty, smallIntent(), smallInterventions(), 4);
     expect(b).toEqual(a);
   });
+
+  it('does not count a joint offer and its absorbed members as the same capacity drawn twice', () => {
+    const world = smallWorld();
+    const [o1, o3] = [world.offers.find((o) => o.id === 'o1')!, world.offers.find((o) => o.id === 'o3')!];
+    world.claims.push({ id: 'c3', actor: 'a3', subject: 'capacity:o3', assertion: 'Line 3 runs 100 per day', value: 100, tier: 'corroborated', provenance: world.claims[0]!.provenance });
+    o3.claims.push('c3');
+    const joint = { ...o1, id: 'joint:shared:o1>o3', claims: ['c1', 'c3'], derivedFrom: { concessions: [], coalition: 'co1' } };
+    world.offers.push(joint);
+    const p = plan();
+    p.allocations = [{ ...p.allocations[0]!, offer: joint.id, qty: 300 }, { ...p.allocations[2]!, qty: 300 }];
+    const f = challengeClaims(world, p, { now: world.createdAt });
+    expect(f.filter((x) => x.kind === 'double-booked')).toEqual([]);
+  });
 });

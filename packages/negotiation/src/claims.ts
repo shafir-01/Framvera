@@ -1,3 +1,4 @@
+import { jointMembers } from '@framvera/contracts';
 import type { Coalition, Id, Iso, Offer, Plan, World } from '@framvera/contracts';
 import type { ClaimFindingDetail } from './types.ts';
 import { fmtMoney, money, unitPriceAt } from './util.ts';
@@ -96,6 +97,15 @@ export function challengeClaims(
     }
   }
 
+  const isJoint = (o: Offer): boolean => !!o.derivedFrom?.coalition || o.id.startsWith('joint:');
+  /** A joint offer runs on its largest member's capacity, so only that member's claim backs it. */
+  const drivesJoint = (joint: Offer, direct: Offer[]): boolean => {
+    const ids = new Set(jointMembers(joint.id) ?? []);
+    const mem = offers.size ? [...ids].map((id) => offers.get(id)).filter((o): o is Offer => !!o) : [];
+    if (!mem.length) return false;
+    const vehicle = mem.reduce((b, m) => (m.capacity > b.capacity ? m : b));
+    return direct.some((d) => d.id === vehicle.id);
+  };
   const capacityClaims = world.claims.filter((c) => c.subject.startsWith('capacity'));
   for (const claim of capacityClaims) {
     const subjectOffer = claim.subject.startsWith('capacity:') ? claim.subject.slice('capacity:'.length) : undefined;
@@ -104,6 +114,12 @@ export function challengeClaims(
     for (const o of world.offers) {
       if (sameSubject.some((c) => o.claims.includes(c.id)) && !users.includes(o)) users.push(o);
     }
+    const direct = users.filter((o) => !isJoint(o));
+    for (let i = users.length - 1; i >= 0; i--) {
+      const o = users[i]!;
+      if (isJoint(o) && !drivesJoint(o, direct)) users.splice(i, 1);
+    }
+    const members = users.filter((o) => !isJoint(o));
     if (claim.value === undefined || !users.length) continue;
     const used = users.reduce((a, o) => a + (allocated.get(o.id) ?? 0), 0);
     const ids = users.map((o) => o.id).join(', ');
@@ -117,8 +133,8 @@ export function challengeClaims(
       });
       continue;
     }
-    if (users.length > 1) {
-      const offered = users.reduce((a, o) => a + o.capacity, 0);
+    if (members.length > 1) {
+      const offered = members.reduce((a, o) => a + o.capacity, 0);
       if (offered > claim.value && users.some((o) => reliedIds.has(o.id))) {
         add({
           claim: claim.id,

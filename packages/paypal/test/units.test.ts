@@ -91,7 +91,7 @@ describe('environment and credentials', () => {
 
   it('never exposes credentials when the adapter is logged or serialised', () => {
     const secret = 'sk-test-secret-value-123456';
-    const a = new PayPalSandboxAdapter({ env: { PAYPAL_CLIENT_ID: 'client-id-abcdef', PAYPAL_CLIENT_SECRET: secret } });
+    const a = new PayPalSandboxAdapter({ env: { PAYPAL_CLIENT_ID: 'test-client', PAYPAL_CLIENT_SECRET: secret } });
     expect(JSON.stringify(a)).not.toContain(secret);
     expect(inspect(a, { depth: 10 })).not.toContain(secret);
     expect(inspect(a.tokens, { depth: 10 })).not.toContain(secret);
