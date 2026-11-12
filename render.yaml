@@ -1,0 +1,29 @@
+services:
+  - type: web
+    name: framvera
+    runtime: node
+    plan: free
+    buildCommand: npm ci --include=dev && npm run build
+    startCommand: npm run start -w @framvera/api
+    healthCheckPath: /api/status
+    autoDeploy: true
+    envVars:
+      - key: NODE_VERSION
+        value: "24"
+      - key: PAYPAL_CLIENT_ID
+        sync: false
+      - key: PAYPAL_CLIENT_SECRET
+        sync: false
+      - key: PAYPAL_ENV
+        sync: false
+      - key: ANTHROPIC_API_KEY
+        sync: false
+      - key: FRAMVERA_ADMIN_TOKEN
+        sync: false
+      - key: FRAMVERA_APPROVAL_SECRET
+        sync: false
+      - key: FRAMVERA_DAILY_AI_CALLS
+        sync: false
+# Persistent data: free web services have an ephemeral filesystem. The ledger under
+# FRAMVERA_DATA (default ./.data) is lost on every redeploy, restart and spin-down;
+# the server then falls back to rebuilding sessions from fresh requests.
