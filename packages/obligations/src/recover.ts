@@ -21,7 +21,7 @@ import type {
 } from '@framvera/contracts';
 import { BINDING, BUYER, LIVE_OBLIGATION, accept, amend, commitAgreement, moveObligation, supersede, type AcceptanceInput, type AmendmentSpec } from './agreement.ts';
 import { defaultNotBefore, impactOf, type Impact } from './disrupt.ts';
-import { allocationCost, coalitionMembers, earliestSlot, exclusivePairs, offerMap, readyAt, required, sameTerms, toAllocation, topoStages, workMs } from './model.ts';
+import { allocationCost, coalitionMembers, earliestSlot, exclusivePairs, mergeJoint, offerMap, readyAt, required, sameTerms, toAllocation, topoStages, workMs } from './model.ts';
 import { capturedMinor, refundable } from './payment.ts';
 import { HOUR, MINUTE, ObligationError, hours, iso, money, ms } from './util.ts';
 
@@ -485,6 +485,26 @@ const signature = (c: Candidate) =>
  * independently against accepted terms, double-booking and the disrupted world, then ranked lexicographically.
  */
 export async function recover(agreement: Agreement, world: World, intent: Intent, d: Disruption, opts: RecoverOptions = {}): Promise<RecoveryResult> {
+  const { obligations, groups } = mergeJoint(agreement.obligations, world);
+  if (!groups.size) return recoverJobs(agreement, world, intent, d, opts);
+  // Members of a joint job are planned as one job, then every member's obligation follows the job's fate.
+  const r = await recoverJobs({ ...agreement, obligations }, world, intent, d, opts);
+  const expand = (ids: Id[]) => ids.flatMap((id) => groups.get(id) ?? [id]);
+  const others = (id: Id) => (groups.get(id) ?? [id]).slice(1);
+  const kept = expand(r.kept);
+  const cancelled = [...expand(r.cancelled), ...r.amended.flatMap(others)];
+  const impact = { ...r.impact, failed: expand(r.impact.failed), mustChange: expand(r.impact.mustChange), atRisk: expand(r.impact.atRisk) };
+  if (!r.feasible) return { ...r, impact, payments: paymentActions(agreement, opts.payments ?? [], impact.failed, [], [], r.id, intent) };
+  const spec: AmendmentSpec = {
+    keep: kept,
+    replace: r.replacements.map((m) => ({ replaces: m.replaces, obligation: obligationFields(m.allocation) })),
+    add: r.added.map(obligationFields),
+  };
+  const amendment = r.amendment ? amend(agreement, spec, opts.buyer ?? BUYER, r.world) : undefined;
+  return { ...r, kept, cancelled, impact, amendment, payments: paymentActions(agreement, opts.payments ?? [], cancelled, r.replacements, r.added, r.id, intent, amendment) };
+}
+
+async function recoverJobs(agreement: Agreement, world: World, intent: Intent, d: Disruption, opts: RecoverOptions): Promise<RecoveryResult> {
   const reserved = toMap(opts.reservedElsewhere);
   const live = agreement.obligations.filter((o) => LIVE_OBLIGATION.includes(o.state));
   const notBefore = opts.notBefore ? ms(opts.notBefore) : defaultNotBefore(agreement, d);
@@ -594,7 +614,7 @@ export async function recover(agreement: Agreement, world: World, intent: Intent
     replace: best.amended.map((m) => ({ replaces: m.replaces, obligation: obligationFields(m.allocation) })),
     add: best.added.map(obligationFields),
   };
-  const amendment = BINDING.includes(agreement.state) && best.changed > 0 ? amend(agreement, spec, opts.buyer ?? BUYER) : undefined;
+  const amendment = BINDING.includes(agreement.state) && best.changed > 0 ? amend(agreement, spec, opts.buyer ?? BUYER, w2) : undefined;
   return {
     id: recId,
     disruption: d.id,

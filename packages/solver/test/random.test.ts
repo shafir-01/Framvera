@@ -244,3 +244,27 @@ describe('stage cost floor', () => {
     );
   });
 });
+
+describe('coalition records', () => {
+  it('never draw more from a member than its effective capacity, and split payment exactly', async () => {
+    const { flagshipWorld } = await import('@framvera/market');
+    const { effectiveCapacity } = await import('@framvera/contracts');
+    const { synthesizeCoalitions, describeCoalition, deriveOffer } = await import('../src/index.ts');
+    const { world, intent } = flagshipWorld();
+    const ids = synthesizeCoalitions(world, intent).map((c) => c.id);
+    expect(ids.length).toBeGreaterThan(0);
+    fc.assert(
+      fc.property(fc.constantFrom(...ids), fc.integer({ min: 1, max: 2000 }), (id, qty) => {
+        const c = describeCoalition(world, id, qty)!;
+        for (const input of c.inputs) {
+          const offer = world.offers.find((o) => o.id === input.offer)!;
+          expect(input.qty).toBeLessThanOrEqual(effectiveCapacity(world, offer));
+        }
+        const joint = deriveOffer(world, id)!;
+        const total = c.split.reduce((a, s) => a + s.share.minor, 0);
+        expect(total).toBe(joint.setupFee.minor + joint.tiers[0]!.unit.minor * qty);
+      }),
+      { numRuns: 200, seed: 21 },
+    );
+  });
+});

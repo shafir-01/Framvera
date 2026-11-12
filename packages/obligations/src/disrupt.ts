@@ -1,6 +1,6 @@
 import type { Agreement, Disruption, Id, Obligation, Offer, PaymentIntent, World } from '@framvera/contracts';
 import { LIVE_OBLIGATION, moveObligation } from './agreement.ts';
-import { allocationCost, coalitionMembers, downstreamStages, required, topoStages, workMs } from './model.ts';
+import { allocationCost, coalitionMembers, downstreamStages, required, topoStages, uniqueJobs, workMs } from './model.ts';
 import { HOUR, MINUTE, iso, ms } from './util.ts';
 
 export interface DisruptionParams {
@@ -150,13 +150,17 @@ function failedObligations(a: Agreement, world: World, d: Disruption, applied: A
   const inactive = new Set(world.actors.filter((x) => !x.active).map((x) => x.id));
   for (const ob of obligations) {
     const offer = offers.get(ob.offer);
-    if (!offer || inactive.has(ob.actor)) {
+    const memberLeft = (coalitionMembers(ob.offer) ?? []).some((m) => {
+      const mo = offers.get(m);
+      return !!mo && inactive.has(mo.actor);
+    });
+    if (!offer || inactive.has(ob.actor) || memberLeft) {
       if (d.kind !== 'payment-failed') out.add(ob.id);
       continue;
     }
     if (!hit.has(ob.offer)) continue;
     if (d.kind === 'capacity-drop' || d.kind === 'claim-overturned') {
-      const held = obligations.filter((x) => x.offer === ob.offer).reduce((s, x) => s + x.qty, 0) + (reserved.get(ob.offer) ?? 0);
+      const held = uniqueJobs(obligations.filter((x) => x.offer === ob.offer)).reduce((s, x) => s + x.qty, 0) + (reserved.get(ob.offer) ?? 0);
       if (held > offer.capacity) out.add(ob.id);
     } else if (d.kind === 'delay') {
       const minimal = ms(ob.start) + workMs(offer, ob.qty) + offer.handoffHours * HOUR;
@@ -218,9 +222,9 @@ export function impactOf(agreement: Agreement, world: World, d: Disruption, opts
     let ready = Math.max(-Infinity, ...locked.map((o) => ms(o.due)));
     const changing = inStage.filter((o) => failed.has(o.id) || mustChange.has(o.id));
     if (changing.length) {
-      const need = required(w2, stage, totalOutcome) - locked.reduce((s, o) => s + o.qty, 0);
+      const need = required(w2, stage, totalOutcome) - uniqueJobs(locked).reduce((s, o) => s + o.qty, 0);
       const usedByLocked = new Map<Id, number>();
-      for (const o of obligations) if (!failed.has(o.id) && !mustChange.has(o.id)) usedByLocked.set(o.offer, (usedByLocked.get(o.offer) ?? 0) + o.qty);
+      for (const o of uniqueJobs(obligations)) if (!failed.has(o.id) && !mustChange.has(o.id)) usedByLocked.set(o.offer, (usedByLocked.get(o.offer) ?? 0) + o.qty);
       const sources = w2.offers
         .filter((o) => o.stage === stage.id && !inactive.has(o.actor))
         .map((offer) => ({ offer, spare: offer.capacity - (usedByLocked.get(offer.id) ?? 0) - (reserved.get(offer.id) ?? 0) }))
@@ -290,7 +294,7 @@ export function outcomeQuantity(a: Agreement, world: World): number {
   let q = Infinity;
   for (const s of world.stages) {
     if (s.perOutcome <= 0) continue;
-    const units = a.obligations.filter((o) => o.stage === s.id).reduce((sum, o) => sum + o.qty, 0);
+    const units = uniqueJobs(a.obligations.filter((o) => o.stage === s.id)).reduce((sum, o) => sum + o.qty, 0);
     q = Math.min(q, Math.floor(units / s.perOutcome));
   }
   return Number.isFinite(q) ? q : 0;

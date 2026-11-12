@@ -13,7 +13,7 @@ import type {
   World,
 } from '@framvera/contracts';
 import { hashTerms } from '@framvera/contracts';
-import { allocationCost, coalitionMembers, workMs } from './model.ts';
+import { allocationCost, coalitionMembers, jointParts, splitJoint, uniqueJobs, workMs } from './model.ts';
 import { HOUR, MINUTE, ObligationError, sumMoney } from './util.ts';
 
 export const BUYER: Id = 'buyer';
@@ -92,25 +92,20 @@ export const termsHashOf = (a: Parameters<typeof termsOf>[0]): string => hashTer
 export interface DraftOptions {
   buyer?: Id;
   at?: Iso;
+  /** With the world, a joint offer's allocation becomes one obligation per member, each with its own share. */
+  world?: World;
 }
 
 /** Deterministic draft: the same plan and intent always give the same agreement id, obligation ids and terms hash. */
 export function draftAgreement(plan: Plan, intent: Intent, opts: DraftOptions = {}): Agreement {
   const buyer = opts.buyer ?? BUYER;
   const id = `agr:${plan.id}`;
-  const obligations: Obligation[] = plan.allocations.map((al, i) => ({
-    id: `obl:${plan.id}:${i}`,
-    agreement: id,
-    actor: al.actor,
-    offer: al.offer,
-    stage: al.stage,
-    qty: al.qty,
-    start: al.start,
-    due: al.finish,
-    amount: al.cost,
-    state: 'PENDING',
-  }));
-  const parties = [buyer, ...new Set(plan.allocations.map((a) => a.actor))];
+  const obligations: Obligation[] = plan.allocations.flatMap((al, i) => {
+    const base = { agreement: id, actor: al.actor, offer: al.offer, stage: al.stage, qty: al.qty, start: al.start, due: al.finish, amount: al.cost, state: 'PENDING' as const };
+    const parts = splitJoint(base, opts.world);
+    return parts.length === 1 ? [{ ...parts[0]!, id: `obl:${plan.id}:${i}` }] : parts.map((p, k) => ({ ...p, id: `obl:${plan.id}:${i}.${k}` }));
+  });
+  const parties = [buyer, ...new Set(obligations.map((o) => o.actor))];
   const base = { id, version: 1, intent: intent.id, plan: plan.id, parties, obligations };
   return { ...base, state: 'DRAFT', termsHash: termsHashOf(base), acceptances: [], createdAt: opts.at ?? intent.provenance.observedAt };
 }
@@ -184,7 +179,7 @@ export interface AmendmentSpec {
 }
 
 /** A new version that must be accepted by every party. The original object is never touched. */
-export function amend(a: Agreement, spec: AmendmentSpec, buyer: Id = BUYER): Agreement {
+export function amend(a: Agreement, spec: AmendmentSpec, buyer: Id = BUYER, world?: World): Agreement {
   if (!BINDING.includes(a.state)) throw new ObligationError('agreement-transition', `Only a committed agreement can be amended; ${a.id} is ${a.state}.`);
   const version = a.version + 1;
   const byId = new Map(a.obligations.map((o) => [o.id, o]));
@@ -193,11 +188,15 @@ export function amend(a: Agreement, spec: AmendmentSpec, buyer: Id = BUYER): Agr
     if (!o) throw new ObligationError('unknown-obligation', `No obligation ${id} in ${a.id}.`);
     return o;
   });
-  const replaced = spec.replace.map((r): Obligation => {
+  const replaced = spec.replace.flatMap((r): Obligation[] => {
     if (!byId.has(r.replaces)) throw new ObligationError('unknown-obligation', `No obligation ${r.replaces} in ${a.id}.`);
-    return { ...r.obligation, id: `${r.replaces}~v${version}`, agreement: a.id, state: 'PENDING', replaces: r.replaces };
+    const parts = splitJoint(r.obligation, world);
+    return parts.map((p, k) => ({ ...p, id: parts.length === 1 ? `${r.replaces}~v${version}` : `${r.replaces}~v${version}.${k}`, agreement: a.id, state: 'PENDING', replaces: r.replaces }));
   });
-  const added = spec.add.map((o, i): Obligation => ({ ...o, id: `obl:${a.id}:v${version}:${i}`, agreement: a.id, state: 'PENDING' }));
+  const added = spec.add.flatMap((o, i): Obligation[] => {
+    const parts = splitJoint(o, world);
+    return parts.map((p, k) => ({ ...p, id: parts.length === 1 ? `obl:${a.id}:v${version}:${i}` : `obl:${a.id}:v${version}:${i}.${k}`, agreement: a.id, state: 'PENDING' }));
+  });
   const obligations = [...kept, ...replaced, ...added];
   const parties = [buyer, ...new Set(obligations.map((o) => o.actor))];
   const base = { id: a.id, version, intent: a.intent, plan: a.plan, parties, obligations };
@@ -264,7 +263,7 @@ export function reservations(agreements: Agreement[], except?: Id): Map<Id, numb
   const out = new Map<Id, number>();
   for (const a of agreements) {
     if (a.id === except || !['ACCEPTED_BY_PARTIES', ...BINDING].includes(a.state)) continue;
-    for (const o of a.obligations) if (LIVE_OBLIGATION.includes(o.state)) out.set(o.offer, (out.get(o.offer) ?? 0) + o.qty);
+    for (const o of uniqueJobs(a.obligations.filter((x) => LIVE_OBLIGATION.includes(x.state)))) out.set(o.offer, (out.get(o.offer) ?? 0) + o.qty);
   }
   return out;
 }
@@ -287,7 +286,7 @@ export function outsideOffer(obligations: Obligation[], world: World): string | 
   for (const ob of obligations) {
     const offer = byId.get(ob.offer);
     if (!offer) return `offer ${ob.offer} is no longer published`;
-    if (actors.get(offer.actor)?.active === false) return 'the supplier is no longer active';
+    if (actors.get(offer.actor)?.active === false || actors.get(ob.actor)?.active === false) return 'the supplier is no longer active';
     use.set(offer.id, (use.get(offer.id) ?? 0) + ob.qty);
     if ((use.get(offer.id) ?? 0) > offer.capacity) return `asks for more than the published capacity of ${offer.capacity}`;
     if (ob.qty < offer.minQty) return `below the minimum order of ${offer.minQty}`;
@@ -295,7 +294,8 @@ export function outsideOffer(obligations: Obligation[], world: World): string | 
     const work = workMs(offer, ob.qty);
     if (start < Date.parse(offer.window.start) - MINUTE || start + work > Date.parse(offer.window.end) + MINUTE) return 'outside the published working window';
     if (Date.parse(ob.due) + MINUTE < start + work + offer.handoffHours * HOUR) return 'earlier than production and handoff allow';
-    if (ob.amount.currency !== offer.setupFee.currency || ob.amount.minor < allocationCost(offer, ob.qty).minor) return 'below the published price';
+    const floor = jointParts(world, offer.id, ob.qty)?.find((p) => p.actor === ob.actor)?.share.minor ?? allocationCost(offer, ob.qty).minor;
+    if (ob.amount.currency !== offer.setupFee.currency || ob.amount.minor < floor) return 'below the published price';
   }
   return null;
 }

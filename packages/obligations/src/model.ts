@@ -1,4 +1,5 @@
 import type { Allocation, Id, Money, Obligation, Offer, Stage, StageId, World } from '@framvera/contracts';
+import { jointShares } from '@framvera/contracts';
 import { HOUR, MINUTE, ms, money } from './util.ts';
 
 /** Price per unit at a quantity: the highest tier whose minQty the quantity reaches. */
@@ -112,6 +113,63 @@ export function coalitionMembers(offerId: string): string[] | null {
     return parts.length >= 2 ? parts : null;
   }
   return null;
+}
+
+/** Each member's part of a joint job under the shared contracts split, or null for an ordinary offer or when a member offer is not in the world. */
+export function jointParts(world: World, offerId: string, qty: number): { actor: Id; share: Money }[] | null {
+  const members = coalitionMembers(offerId);
+  if (!members) return null;
+  const offers = members.map((m) => world.offers.find((o) => o.id === m));
+  if (offers.some((o) => !o)) return null;
+  return jointShares(offers as Offer[], qty).map((s) => ({ actor: s.actor, share: s.share }));
+}
+
+/** One obligation per member for a joint job, each with its exact share; ordinary obligations pass through. */
+export function splitJoint<T extends { actor: Id; offer: string; qty: number; amount: Money }>(o: T, world?: World): T[] {
+  if (!world) return [o];
+  const parts = jointParts(world, o.offer, o.qty);
+  if (!parts || parts.reduce((s, p) => s + p.share.minor, 0) !== o.amount.minor) return [o];
+  return parts.map((p) => ({ ...o, actor: p.actor, amount: p.share }));
+}
+
+const jobKey = (o: { offer: string; start: string; due: string }) => `${o.offer}|${o.start}|${o.due}`;
+
+/** The members of a joint job deliver the same units together, so quantities count the job once. */
+export function uniqueJobs<T extends { offer: string; start: string; due: string }>(obligations: readonly T[]): T[] {
+  const seen = new Set<string>();
+  return obligations.filter((o) => {
+    if (!coalitionMembers(o.offer)) return true;
+    const k = jobKey(o);
+    if (seen.has(k)) return false;
+    seen.add(k);
+    return true;
+  });
+}
+
+/** Folds a joint job's member obligations back into one, for planning; `groups` maps the kept id to every member id. */
+export function mergeJoint(obligations: readonly Obligation[], world: World): { obligations: Obligation[]; groups: Map<Id, Id[]> } {
+  const groups = new Map<Id, Id[]>();
+  const head = new Map<string, Obligation>();
+  const out: Obligation[] = [];
+  for (const o of obligations) {
+    if (!coalitionMembers(o.offer)) {
+      out.push(o);
+      continue;
+    }
+    const k = `${jobKey(o)}|${o.state}`;
+    const first = head.get(k);
+    if (!first) {
+      const merged = { ...o, actor: world.offers.find((x) => x.id === o.offer)?.actor ?? o.actor };
+      head.set(k, merged);
+      groups.set(o.id, [o.id]);
+      out.push(merged);
+      continue;
+    }
+    first.amount = { ...first.amount, minor: first.amount.minor + o.amount.minor };
+    groups.get(first.id)!.push(o.id);
+  }
+  for (const [id, ids] of groups) if (ids.length === 1) groups.delete(id);
+  return { obligations: out, groups };
 }
 
 /** Offers that cannot be used together: a joint offer and each of its members. */

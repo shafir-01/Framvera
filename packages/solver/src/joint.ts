@@ -1,5 +1,5 @@
 import type { Coalition, Money, Offer, Plan, World } from '@framvera/contracts';
-import { composeJoint, jointMembers, jointShares } from '@framvera/contracts';
+import { composeJoint, effectiveCapacity, jointMembers, jointShares } from '@framvera/contracts';
 
 /**
  * Joint offers follow the shared contracts semantics (composeJoint): the larger member's capacity
@@ -41,7 +41,8 @@ export function sharedId(a: Offer, b: Offer): string | null {
 }
 
 /**
- * The coalition record for a joint offer at a given quantity: what each member contributes and the
+ * The coalition record for a joint offer at a given quantity: what each member contributes (never more
+ * than its own effective capacity) and the
  * default payment split from the shared contracts (each member keeps its setup fee, per-unit revenue
  * shared by first-tier unit prices). Outside options default to no sale in this request unless a
  * plan without the coalition is given.
@@ -65,7 +66,7 @@ export function describeCoalition(world: World, id: string, qty: number, outside
     id,
     members: ms.map((m) => m.actor),
     output: { stage: joint.stage, qty },
-    inputs: ms.map((m) => ({ offer: m.id, qty })),
+    inputs: ms.map((m) => ({ offer: m.id, qty: Math.min(qty, effectiveCapacity(world, m)) })),
     split: shares.map((s) => ({
       actor: s.actor,
       share: s.share,
