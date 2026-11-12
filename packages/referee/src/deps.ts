@@ -3,7 +3,7 @@ import type { Deps } from './types.ts';
 const REQUIRED: Record<string, string[]> = {
   '@framvera/market': ['generateWorld', 'flagshipWorld'],
   '@framvera/solver': ['solve', 'findInterventions', 'applyConcessions', 'verifyPlan'],
-  '@framvera/negotiation': ['selectQuestions', 'decide', 'challengeClaims'],
+  '@framvera/negotiation': ['selectQuestions', 'decide', 'challengeClaims', 'splitCoalition'],
   '@framvera/obligations': ['commit', 'disrupt', 'recover'],
 };
 

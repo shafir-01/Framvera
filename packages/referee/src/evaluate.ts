@@ -53,7 +53,11 @@ export interface RecoveryResult { attempted: boolean; success: boolean; affected
 export async function tryRecovery(deps: Deps, o: Outcome, truth: HiddenTruthLike): Promise<RecoveryResult> {
   const none: RecoveryResult = { attempted: false, success: false, affected: 0, invariants: [] };
   if (!o.plan) return none;
-  const agreement = deps.obligations.commit(o.plan, o.intent, o.decisions);
+  const draft = deps.obligations.commit(o.plan, o.intent, []);
+  const signed = draft.parties.map((actor) => ({
+    actor, message: `sign-${actor}`, termsHash: draft.termsHash, basis: actor === 'buyer' ? 'buyer' : 'synthetic-policy',
+  }));
+  const agreement = deps.obligations.commit(o.plan, o.intent, signed as never);
   let hit: { d: Disruption; world: World; affected: string[] } | null = null;
   for (const d of truth.shocks) {
     const r = deps.obligations.disrupt(agreement, o.world, d);

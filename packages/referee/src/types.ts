@@ -1,5 +1,5 @@
 import type {
-  Actor, Concession, Disruption, Intent, Intervention, Money, NegotiationMessage, Plan, Recovery,
+  Actor, Coalition, Concession, Disruption, Intent, Intervention, Money, NegotiationMessage, Plan, Recovery,
   SolveReport, SupplierDecision, Verification, World, Agreement, Obligation, ClaimFinding,
 } from '@framvera/contracts';
 
@@ -31,7 +31,8 @@ export interface Deps {
   };
   negotiation: {
     selectQuestions(world: World, intent: Intent, interventions: Intervention[], budget: number): { message: NegotiationMessage; voi: number }[];
-    decide(msg: NegotiationMessage, policy: unknown, world: World): SupplierDecision;
+    decide(msg: NegotiationMessage, policy: unknown, world: World, ctx?: { coalitions?: Coalition[] }): SupplierDecision;
+    splitCoalition(coalition: Coalition, policies?: Record<string, unknown>, ctx?: { world?: World; payment?: Money }): Coalition;
     challengeClaims(world: World, plan: Plan): ClaimFinding[];
   };
   obligations: {

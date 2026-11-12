@@ -1,4 +1,4 @@
-import type { Concession, Intent, Intervention, NegotiationMessage, Plan, SolveReport, World } from '@framvera/contracts';
+import type { Coalition, Concession, Intent, Intervention, NegotiationMessage, Plan, SolveReport, SupplierDecision, World } from '@framvera/contracts';
 import { runAgentHarness } from './harness/index.ts';
 import { createBoundary, type Boundary } from './boundary.ts';
 import { buildDirectPlan, directLooksFeasible } from './direct.ts';
@@ -43,6 +43,35 @@ class Ctx {
       expires: new Date(Date.parse(at) + 24 * H).toISOString(), at,
     };
   }
+  registerCoalitions(ivs: Intervention[]): void {
+    const seen = new Map<string, Coalition>();
+    for (const iv of ivs) {
+      if (iv.coalition && !seen.has(iv.coalition.id)) {
+        seen.set(iv.coalition.id, this.deps.negotiation.splitCoalition(iv.coalition, undefined, { world: this.world }));
+      }
+    }
+    this.boundary.setCoalitions([...seen.values()]);
+  }
+  /** Terms the buyer takes from a supplier answer: the ask itself, or the supplier's own counter. */
+  private termsOf(c: Concession, d: SupplierDecision): Concession[] | null {
+    if (d.accept) return [c];
+    const k = d.counter;
+    if (!k) return null;
+    const sameTerm = k.target.kind === 'offer' && c.target.kind === 'offer' && k.target.offer === c.target.offer && k.target.field === c.target.field;
+    return sameTerm ? [k] : [c, k];
+  }
+  ask(m: NegotiationMessage): Concession[] | null {
+    const c = concessionOf(m);
+    if (!c) return null;
+    const d = this.boundary.ask(m);
+    const t = this.termsOf(c, d);
+    if (t && !d.accept) this.boundary.countAccepted();
+    return t;
+  }
+  hindsightTerms(m: NegotiationMessage): Concession[] | null {
+    const c = concessionOf(m);
+    return c ? this.termsOf(c, this.boundary.hindsight(m)) : null;
+  }
   outcome(claimed: boolean, world: World, intent: Intent, plan?: Plan): Outcome {
     return {
       claimed, plan, world, intent, questions: this.boundary.asked, accepted: this.boundary.accepted,
@@ -71,7 +100,7 @@ function concessionOf(msg: NegotiationMessage): Concession | null {
 async function solveWith(ctx: Ctx, accepted: Concession[]): Promise<Outcome> {
   const { world, intent } = ctx.deps.solver.applyConcessions(ctx.world, ctx.intent, accepted);
   const r = await ctx.solve(world, intent);
-  if (!feasible(r)) return ctx.outcome(false, world, intent);
+  if (!feasible(r) || r.plan.total.minor > intent.budget.minor || !ctx.deps.solver.verifyPlan(r.plan, world, intent).ok) return ctx.outcome(false, world, intent);
   return ctx.outcome(true, world, intent, r.plan);
 }
 
@@ -90,7 +119,8 @@ function askAll(ctx: Ctx, cs: Concession[]): Concession[] {
   const ok: Concession[] = [];
   for (const c of cs) {
     const m = ctx.propose(c);
-    if (m && ctx.boundary.ask(m).accept) ok.push(c);
+    const t = m ? ctx.ask(m) : null;
+    if (t) ok.push(...t);
   }
   return ok;
 }
@@ -154,10 +184,11 @@ async function framvera(ctx: Ctx, f: FramveraFlags): Promise<Outcome> {
 
   let pool = (await deps.solver.findInterventions(ctx.world, ctx.intent, { maxChanges: ctx.cfg.maxChanges, k: 12 }))
     .filter((iv) => iv.unlocks && (f.coalitions || (iv.method !== 'coalition' && !iv.coalition)));
-  const granted = new Map<string, Concession>();
+  ctx.registerCoalitions(pool);
+  const granted = new Map<string, Concession[]>();
   const rejected = new Set<string>();
   const asked = new Set<string>();
-  for (const iv of pool) for (const c of iv.concessions) if (buyerGrants(ctx.intent, c)) granted.set(c.id, c);
+  for (const iv of pool) for (const c of iv.concessions) if (buyerGrants(ctx.intent, c)) granted.set(c.id, [c]);
 
   const covered = () =>
     pool.filter((iv) => iv.concessions.every((c) => granted.has(c.id)))
@@ -179,15 +210,20 @@ async function framvera(ctx: Ctx, f: FramveraFlags): Promise<Outcome> {
     for (const m of fresh) {
       const c = concessionOf(m) as Concession;
       asked.add(c.id);
-      if (ctx.boundary.ask(m).accept) granted.set(c.id, c);
+      const t = ctx.ask(m);
+      if (t) granted.set(c.id, t);
       else rejected.add(c.id);
     }
     pool = pool.filter((iv) => !involves(iv, rejected));
   }
 
-  const chosen = covered()[0];
-  if (!chosen) { ctx.notes.push('no intervention fully accepted'); return ctx.outcome(false, ctx.world, ctx.intent); }
-  const out = await solveWith(ctx, chosen.concessions.map((c) => granted.get(c.id) as Concession));
+  const options = covered();
+  if (!options.length) { ctx.notes.push('no intervention fully accepted'); return ctx.outcome(false, ctx.world, ctx.intent); }
+  let out = ctx.outcome(false, ctx.world, ctx.intent);
+  for (const iv of options.slice(0, 4)) {
+    out = await solveWith(ctx, iv.concessions.flatMap((c) => granted.get(c.id) as Concession[]));
+    if (out.claimed) break;
+  }
   if (out.claimed && out.plan && f.claimChecks) {
     const bad = deps.negotiation.challengeClaims(out.world, out.plan).filter((x) => x.verdict === 'contradicted' || x.verdict === 'expired');
     if (bad.length) { ctx.notes.push(`claim checks rejected plan: ${bad.map((b) => b.claim).join(',')}`); return ctx.outcome(false, out.world, out.intent); }
@@ -201,14 +237,18 @@ async function oracle(ctx: Ctx): Promise<Outcome> {
   const pool = (await ctx.deps.solver.findInterventions(ctx.world, ctx.intent, { maxChanges: ctx.cfg.maxChanges + 1, k: 40 }))
     .filter((iv) => iv.unlocks)
     .sort((a, b) => (a.totalAfter?.minor ?? Infinity) - (b.totalAfter?.minor ?? Infinity));
+  ctx.registerCoalitions(pool);
   for (const iv of pool) {
+    const terms: Concession[] = [];
     const ok = iv.concessions.every((c) => {
-      if (c.target.kind === 'intent') return buyerGrants(ctx.intent, c);
+      if (c.target.kind === 'intent') { terms.push(c); return buyerGrants(ctx.intent, c); }
       const m = ctx.propose(c);
-      return !!m && ctx.boundary.hindsight(m).accept;
+      const t = m ? ctx.hindsightTerms(m) : null;
+      if (t) terms.push(...t);
+      return !!t;
     });
     if (!ok) continue;
-    const out = await solveWith(ctx, iv.concessions);
+    const out = await solveWith(ctx, terms);
     if (out.claimed) { ctx.notes.push('hindsight: intervention chosen with knowledge of private policies'); return out; }
   }
   return ctx.outcome(false, ctx.world, ctx.intent);

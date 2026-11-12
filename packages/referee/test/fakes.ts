@@ -85,6 +85,7 @@ export function fakeDeps(opts: { lie?: boolean } = {}): Deps {
       },
     },
     negotiation: {
+      splitCoalition: (co) => co,
       selectQuestions(_w, _i, ivs, budget) {
         return ivs.flatMap((iv) => iv.concessions).slice(0, budget).map((c) => ({
           voi: 1,

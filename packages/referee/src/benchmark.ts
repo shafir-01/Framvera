@@ -57,9 +57,13 @@ export async function runBenchmark(deps: Deps, opts: BenchOptions): Promise<{ re
           rec.solveMs = out.solveMs;
           rec.notes = out.notes;
           if (j.trulyFeasible) {
-            const r = await tryRecovery(deps, out, truth);
-            rec.recovery = { attempted: r.attempted, success: r.success, affected: r.affected, note: r.note };
-            rec.invariantViolations.push(...r.invariants);
+            try {
+              const r = await tryRecovery(deps, out, truth);
+              rec.recovery = { attempted: r.attempted, success: r.success, affected: r.affected, note: r.note };
+              rec.invariantViolations.push(...r.invariants);
+            } catch (e) {
+              rec.recovery = { attempted: true, success: false, affected: 0, note: `recovery error: ${e instanceof Error ? e.message : String(e)}` };
+            }
           }
         } catch (e) {
           rec.error = e instanceof Error ? e.message : String(e);

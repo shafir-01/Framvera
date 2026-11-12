@@ -1,0 +1,1058 @@
+{
+  "generatedAt": "2026-11-12T15:32:47.462Z",
+  "heldOutSeeds": {
+    "feasible": {
+      "first": 910000,
+      "last": 910029
+    },
+    "salvageable": {
+      "first": 1910000,
+      "last": 1910029
+    },
+    "impossible": {
+      "first": 2910000,
+      "last": 2910029
+    }
+  },
+  "claim": {
+    "framveraFeasible": [
+      16,
+      30
+    ],
+    "bestBaseline": {
+      "strategy": "random-relaxations",
+      "feasible": [
+        4,
+        30
+      ]
+    }
+  },
+  "falseClaimsFramvera": [
+    {
+      "family": "feasible",
+      "falseClaims": [
+        0,
+        30
+      ]
+    },
+    {
+      "family": "salvageable",
+      "falseClaims": [
+        0,
+        16
+      ]
+    },
+    {
+      "family": "impossible",
+      "falseClaims": [
+        0,
+        0
+      ]
+    }
+  ],
+  "impossibleClaims": [
+    {
+      "strategy": "direct",
+      "claimed": [
+        0,
+        30
+      ]
+    },
+    {
+      "strategy": "optimizer",
+      "claimed": [
+        0,
+        30
+      ]
+    },
+    {
+      "strategy": "uniform-heuristic",
+      "claimed": [
+        0,
+        30
+      ]
+    },
+    {
+      "strategy": "random-relaxations",
+      "claimed": [
+        0,
+        30
+      ]
+    },
+    {
+      "strategy": "framvera",
+      "claimed": [
+        0,
+        30
+      ]
+    },
+    {
+      "strategy": "framvera-no-coalitions",
+      "claimed": [
+        0,
+        30
+      ]
+    },
+    {
+      "strategy": "framvera-no-voi",
+      "claimed": [
+        0,
+        30
+      ]
+    },
+    {
+      "strategy": "framvera-no-claim-checks",
+      "claimed": [
+        0,
+        30
+      ]
+    }
+  ],
+  "families": {
+    "feasible": [
+      {
+        "strategy": "direct",
+        "label": "Direct procurement",
+        "hindsight": false,
+        "feasible": [
+          1,
+          30
+        ],
+        "feasibleCi": [
+          0.0059084379948573795,
+          0.16670751396958874
+        ],
+        "infeasibleToFeasible": [
+          0,
+          0
+        ],
+        "falseClaims": [
+          6,
+          7
+        ],
+        "questionsMean": 0,
+        "acceptance": [
+          0,
+          0
+        ],
+        "costVsOracle": {
+          "mean": 1.010727244044802,
+          "n": 1
+        },
+        "invariantViolations": 6,
+        "recovery": [
+          1,
+          1
+        ],
+        "solveMsMean": 0
+      },
+      {
+        "strategy": "optimizer",
+        "label": "Conventional optimizer",
+        "hindsight": false,
+        "feasible": [
+          30,
+          30
+        ],
+        "feasibleCi": [
+          0.8864829086095221,
+          1
+        ],
+        "infeasibleToFeasible": [
+          0,
+          0
+        ],
+        "falseClaims": [
+          0,
+          30
+        ],
+        "questionsMean": 0,
+        "acceptance": [
+          0,
+          0
+        ],
+        "costVsOracle": {
+          "mean": 1,
+          "n": 30
+        },
+        "invariantViolations": 0,
+        "recovery": [
+          17,
+          30
+        ],
+        "solveMsMean": 88.68666666666667
+      },
+      {
+        "strategy": "uniform-heuristic",
+        "label": "Uniform heuristic negotiation",
+        "hindsight": false,
+        "feasible": [
+          30,
+          30
+        ],
+        "feasibleCi": [
+          0.8864829086095221,
+          1
+        ],
+        "infeasibleToFeasible": [
+          0,
+          0
+        ],
+        "falseClaims": [
+          0,
+          30
+        ],
+        "questionsMean": 47.733333333333334,
+        "acceptance": [
+          52,
+          1432
+        ],
+        "costVsOracle": {
+          "mean": 0.997380674632333,
+          "n": 30
+        },
+        "invariantViolations": 0,
+        "recovery": [
+          17,
+          30
+        ],
+        "solveMsMean": 84.24666666666668
+      },
+      {
+        "strategy": "random-relaxations",
+        "label": "Random relaxations",
+        "hindsight": false,
+        "feasible": [
+          30,
+          30
+        ],
+        "feasibleCi": [
+          0.8864829086095221,
+          1
+        ],
+        "infeasibleToFeasible": [
+          0,
+          0
+        ],
+        "falseClaims": [
+          0,
+          30
+        ],
+        "questionsMean": 8,
+        "acceptance": [
+          147,
+          240
+        ],
+        "costVsOracle": {
+          "mean": 0.993967618635834,
+          "n": 30
+        },
+        "invariantViolations": 0,
+        "recovery": [
+          16,
+          29
+        ],
+        "solveMsMean": 85.98666666666668
+      },
+      {
+        "strategy": "framvera",
+        "label": "Framvera (full)",
+        "hindsight": false,
+        "feasible": [
+          30,
+          30
+        ],
+        "feasibleCi": [
+          0.8864829086095221,
+          1
+        ],
+        "infeasibleToFeasible": [
+          0,
+          0
+        ],
+        "falseClaims": [
+          0,
+          30
+        ],
+        "questionsMean": 0,
+        "acceptance": [
+          0,
+          0
+        ],
+        "costVsOracle": {
+          "mean": 1,
+          "n": 30
+        },
+        "invariantViolations": 0,
+        "recovery": [
+          17,
+          30
+        ],
+        "solveMsMean": 85.1166666666667
+      },
+      {
+        "strategy": "framvera-no-coalitions",
+        "label": "Ablation: no coalitions",
+        "hindsight": false,
+        "feasible": [
+          30,
+          30
+        ],
+        "feasibleCi": [
+          0.8864829086095221,
+          1
+        ],
+        "infeasibleToFeasible": [
+          0,
+          0
+        ],
+        "falseClaims": [
+          0,
+          30
+        ],
+        "questionsMean": 0,
+        "acceptance": [
+          0,
+          0
+        ],
+        "costVsOracle": {
+          "mean": 1,
+          "n": 30
+        },
+        "invariantViolations": 0,
+        "recovery": [
+          17,
+          30
+        ],
+        "solveMsMean": 86.5933333333333
+      },
+      {
+        "strategy": "framvera-no-voi",
+        "label": "Ablation: no value-of-information",
+        "hindsight": false,
+        "feasible": [
+          30,
+          30
+        ],
+        "feasibleCi": [
+          0.8864829086095221,
+          1
+        ],
+        "infeasibleToFeasible": [
+          0,
+          0
+        ],
+        "falseClaims": [
+          0,
+          30
+        ],
+        "questionsMean": 0,
+        "acceptance": [
+          0,
+          0
+        ],
+        "costVsOracle": {
+          "mean": 1,
+          "n": 30
+        },
+        "invariantViolations": 0,
+        "recovery": [
+          17,
+          30
+        ],
+        "solveMsMean": 86.26
+      },
+      {
+        "strategy": "framvera-no-claim-checks",
+        "label": "Ablation: no claim checks",
+        "hindsight": false,
+        "feasible": [
+          30,
+          30
+        ],
+        "feasibleCi": [
+          0.8864829086095221,
+          1
+        ],
+        "infeasibleToFeasible": [
+          0,
+          0
+        ],
+        "falseClaims": [
+          0,
+          30
+        ],
+        "questionsMean": 0,
+        "acceptance": [
+          0,
+          0
+        ],
+        "costVsOracle": {
+          "mean": 1,
+          "n": 30
+        },
+        "invariantViolations": 0,
+        "recovery": [
+          17,
+          30
+        ],
+        "solveMsMean": 86.74
+      },
+      {
+        "strategy": "oracle",
+        "label": "Oracle (hindsight, upper bound)",
+        "hindsight": true,
+        "feasible": [
+          30,
+          30
+        ],
+        "feasibleCi": [
+          0.8864829086095221,
+          1
+        ],
+        "infeasibleToFeasible": [
+          0,
+          0
+        ],
+        "falseClaims": [
+          0,
+          30
+        ],
+        "questionsMean": 0,
+        "acceptance": [
+          0,
+          0
+        ],
+        "costVsOracle": {
+          "mean": 1,
+          "n": 30
+        },
+        "invariantViolations": 0,
+        "recovery": [
+          17,
+          30
+        ],
+        "solveMsMean": 85.39000000000001
+      }
+    ],
+    "salvageable": [
+      {
+        "strategy": "direct",
+        "label": "Direct procurement",
+        "hindsight": false,
+        "feasible": [
+          0,
+          30
+        ],
+        "feasibleCi": [
+          0,
+          0.113517091390478
+        ],
+        "infeasibleToFeasible": [
+          0,
+          30
+        ],
+        "falseClaims": [
+          1,
+          1
+        ],
+        "questionsMean": 0,
+        "acceptance": [
+          0,
+          0
+        ],
+        "costVsOracle": null,
+        "invariantViolations": 1,
+        "recovery": [
+          0,
+          0
+        ],
+        "solveMsMean": 0
+      },
+      {
+        "strategy": "optimizer",
+        "label": "Conventional optimizer",
+        "hindsight": false,
+        "feasible": [
+          0,
+          30
+        ],
+        "feasibleCi": [
+          0,
+          0.113517091390478
+        ],
+        "infeasibleToFeasible": [
+          0,
+          30
+        ],
+        "falseClaims": [
+          0,
+          0
+        ],
+        "questionsMean": 0,
+        "acceptance": [
+          0,
+          0
+        ],
+        "costVsOracle": null,
+        "invariantViolations": 0,
+        "recovery": [
+          0,
+          0
+        ],
+        "solveMsMean": 836.8933333333333
+      },
+      {
+        "strategy": "uniform-heuristic",
+        "label": "Uniform heuristic negotiation",
+        "hindsight": false,
+        "feasible": [
+          1,
+          30
+        ],
+        "feasibleCi": [
+          0.0059084379948573795,
+          0.16670751396958874
+        ],
+        "infeasibleToFeasible": [
+          1,
+          30
+        ],
+        "falseClaims": [
+          0,
+          1
+        ],
+        "questionsMean": 43.6,
+        "acceptance": [
+          43,
+          1308
+        ],
+        "costVsOracle": {
+          "mean": 1.1648208469055374,
+          "n": 1
+        },
+        "invariantViolations": 0,
+        "recovery": [
+          0,
+          1
+        ],
+        "solveMsMean": 1004.5466666666667
+      },
+      {
+        "strategy": "random-relaxations",
+        "label": "Random relaxations",
+        "hindsight": false,
+        "feasible": [
+          4,
+          30
+        ],
+        "feasibleCi": [
+          0.05309569424218104,
+          0.2968168394441695
+        ],
+        "infeasibleToFeasible": [
+          4,
+          30
+        ],
+        "falseClaims": [
+          0,
+          4
+        ],
+        "questionsMean": 8,
+        "acceptance": [
+          124,
+          240
+        ],
+        "costVsOracle": {
+          "mean": 0.9496867259661266,
+          "n": 4
+        },
+        "invariantViolations": 0,
+        "recovery": [
+          0,
+          4
+        ],
+        "solveMsMean": 994.5233333333332
+      },
+      {
+        "strategy": "framvera",
+        "label": "Framvera (full)",
+        "hindsight": false,
+        "feasible": [
+          16,
+          30
+        ],
+        "feasibleCi": [
+          0.3614201328152505,
+          0.6976787277587178
+        ],
+        "infeasibleToFeasible": [
+          16,
+          30
+        ],
+        "falseClaims": [
+          0,
+          16
+        ],
+        "questionsMean": 2.033333333333333,
+        "acceptance": [
+          59,
+          61
+        ],
+        "costVsOracle": {
+          "mean": 1,
+          "n": 16
+        },
+        "invariantViolations": 0,
+        "recovery": [
+          1,
+          16
+        ],
+        "solveMsMean": 867.1900000000002
+      },
+      {
+        "strategy": "framvera-no-coalitions",
+        "label": "Ablation: no coalitions",
+        "hindsight": false,
+        "feasible": [
+          19,
+          30
+        ],
+        "feasibleCi": [
+          0.45513246433604937,
+          0.7812629779598231
+        ],
+        "infeasibleToFeasible": [
+          19,
+          30
+        ],
+        "falseClaims": [
+          0,
+          19
+        ],
+        "questionsMean": 0.7,
+        "acceptance": [
+          21,
+          21
+        ],
+        "costVsOracle": {
+          "mean": 1.0101720062023478,
+          "n": 19
+        },
+        "invariantViolations": 0,
+        "recovery": [
+          1,
+          19
+        ],
+        "solveMsMean": 931.2199999999999
+      },
+      {
+        "strategy": "framvera-no-voi",
+        "label": "Ablation: no value-of-information",
+        "hindsight": false,
+        "feasible": [
+          16,
+          30
+        ],
+        "feasibleCi": [
+          0.3614201328152505,
+          0.6976787277587178
+        ],
+        "infeasibleToFeasible": [
+          16,
+          30
+        ],
+        "falseClaims": [
+          0,
+          16
+        ],
+        "questionsMean": 2.033333333333333,
+        "acceptance": [
+          60,
+          61
+        ],
+        "costVsOracle": {
+          "mean": 1,
+          "n": 16
+        },
+        "invariantViolations": 0,
+        "recovery": [
+          1,
+          16
+        ],
+        "solveMsMean": 943.0966666666667
+      },
+      {
+        "strategy": "framvera-no-claim-checks",
+        "label": "Ablation: no claim checks",
+        "hindsight": false,
+        "feasible": [
+          30,
+          30
+        ],
+        "feasibleCi": [
+          0.8864829086095221,
+          1
+        ],
+        "infeasibleToFeasible": [
+          30,
+          30
+        ],
+        "falseClaims": [
+          0,
+          30
+        ],
+        "questionsMean": 2.033333333333333,
+        "acceptance": [
+          59,
+          61
+        ],
+        "costVsOracle": {
+          "mean": 1,
+          "n": 30
+        },
+        "invariantViolations": 0,
+        "recovery": [
+          6,
+          30
+        ],
+        "solveMsMean": 888.7066666666667
+      },
+      {
+        "strategy": "oracle",
+        "label": "Oracle (hindsight, upper bound)",
+        "hindsight": true,
+        "feasible": [
+          30,
+          30
+        ],
+        "feasibleCi": [
+          0.8864829086095221,
+          1
+        ],
+        "infeasibleToFeasible": [
+          30,
+          30
+        ],
+        "falseClaims": [
+          0,
+          30
+        ],
+        "questionsMean": 0,
+        "acceptance": [
+          0,
+          0
+        ],
+        "costVsOracle": {
+          "mean": 1,
+          "n": 30
+        },
+        "invariantViolations": 0,
+        "recovery": [
+          6,
+          30
+        ],
+        "solveMsMean": 962.1233333333334
+      }
+    ],
+    "impossible": [
+      {
+        "strategy": "direct",
+        "label": "Direct procurement",
+        "hindsight": false,
+        "feasible": [
+          0,
+          30
+        ],
+        "feasibleCi": [
+          0,
+          0.113517091390478
+        ],
+        "infeasibleToFeasible": [
+          0,
+          30
+        ],
+        "falseClaims": [
+          0,
+          0
+        ],
+        "questionsMean": 0,
+        "acceptance": [
+          0,
+          0
+        ],
+        "costVsOracle": null,
+        "invariantViolations": 0,
+        "recovery": [
+          0,
+          0
+        ],
+        "solveMsMean": 0
+      },
+      {
+        "strategy": "optimizer",
+        "label": "Conventional optimizer",
+        "hindsight": false,
+        "feasible": [
+          0,
+          30
+        ],
+        "feasibleCi": [
+          0,
+          0.113517091390478
+        ],
+        "infeasibleToFeasible": [
+          0,
+          30
+        ],
+        "falseClaims": [
+          0,
+          0
+        ],
+        "questionsMean": 0,
+        "acceptance": [
+          0,
+          0
+        ],
+        "costVsOracle": null,
+        "invariantViolations": 0,
+        "recovery": [
+          0,
+          0
+        ],
+        "solveMsMean": 462.16
+      },
+      {
+        "strategy": "uniform-heuristic",
+        "label": "Uniform heuristic negotiation",
+        "hindsight": false,
+        "feasible": [
+          0,
+          30
+        ],
+        "feasibleCi": [
+          0,
+          0.113517091390478
+        ],
+        "infeasibleToFeasible": [
+          0,
+          30
+        ],
+        "falseClaims": [
+          0,
+          0
+        ],
+        "questionsMean": 47.733333333333334,
+        "acceptance": [
+          46,
+          1432
+        ],
+        "costVsOracle": null,
+        "invariantViolations": 0,
+        "recovery": [
+          0,
+          0
+        ],
+        "solveMsMean": 500.1766666666666
+      },
+      {
+        "strategy": "random-relaxations",
+        "label": "Random relaxations",
+        "hindsight": false,
+        "feasible": [
+          0,
+          30
+        ],
+        "feasibleCi": [
+          0,
+          0.113517091390478
+        ],
+        "infeasibleToFeasible": [
+          0,
+          30
+        ],
+        "falseClaims": [
+          0,
+          0
+        ],
+        "questionsMean": 8,
+        "acceptance": [
+          141,
+          240
+        ],
+        "costVsOracle": null,
+        "invariantViolations": 0,
+        "recovery": [
+          0,
+          0
+        ],
+        "solveMsMean": 524.7766666666668
+      },
+      {
+        "strategy": "framvera",
+        "label": "Framvera (full)",
+        "hindsight": false,
+        "feasible": [
+          0,
+          30
+        ],
+        "feasibleCi": [
+          0,
+          0.113517091390478
+        ],
+        "infeasibleToFeasible": [
+          0,
+          30
+        ],
+        "falseClaims": [
+          0,
+          0
+        ],
+        "questionsMean": 0.03333333333333333,
+        "acceptance": [
+          1,
+          1
+        ],
+        "costVsOracle": null,
+        "invariantViolations": 0,
+        "recovery": [
+          0,
+          0
+        ],
+        "solveMsMean": 453.2500000000001
+      },
+      {
+        "strategy": "framvera-no-coalitions",
+        "label": "Ablation: no coalitions",
+        "hindsight": false,
+        "feasible": [
+          0,
+          30
+        ],
+        "feasibleCi": [
+          0,
+          0.113517091390478
+        ],
+        "infeasibleToFeasible": [
+          0,
+          30
+        ],
+        "falseClaims": [
+          0,
+          0
+        ],
+        "questionsMean": 0.03333333333333333,
+        "acceptance": [
+          1,
+          1
+        ],
+        "costVsOracle": null,
+        "invariantViolations": 0,
+        "recovery": [
+          0,
+          0
+        ],
+        "solveMsMean": 472.27000000000004
+      },
+      {
+        "strategy": "framvera-no-voi",
+        "label": "Ablation: no value-of-information",
+        "hindsight": false,
+        "feasible": [
+          0,
+          30
+        ],
+        "feasibleCi": [
+          0,
+          0.113517091390478
+        ],
+        "infeasibleToFeasible": [
+          0,
+          30
+        ],
+        "falseClaims": [
+          0,
+          0
+        ],
+        "questionsMean": 0.03333333333333333,
+        "acceptance": [
+          1,
+          1
+        ],
+        "costVsOracle": null,
+        "invariantViolations": 0,
+        "recovery": [
+          0,
+          0
+        ],
+        "solveMsMean": 454.8766666666666
+      },
+      {
+        "strategy": "framvera-no-claim-checks",
+        "label": "Ablation: no claim checks",
+        "hindsight": false,
+        "feasible": [
+          0,
+          30
+        ],
+        "feasibleCi": [
+          0,
+          0.113517091390478
+        ],
+        "infeasibleToFeasible": [
+          0,
+          30
+        ],
+        "falseClaims": [
+          0,
+          0
+        ],
+        "questionsMean": 0.03333333333333333,
+        "acceptance": [
+          1,
+          1
+        ],
+        "costVsOracle": null,
+        "invariantViolations": 0,
+        "recovery": [
+          0,
+          0
+        ],
+        "solveMsMean": 468.8966666666666
+      },
+      {
+        "strategy": "oracle",
+        "label": "Oracle (hindsight, upper bound)",
+        "hindsight": true,
+        "feasible": [
+          0,
+          30
+        ],
+        "feasibleCi": [
+          0,
+          0.113517091390478
+        ],
+        "infeasibleToFeasible": [
+          0,
+          30
+        ],
+        "falseClaims": [
+          0,
+          0
+        ],
+        "questionsMean": 0,
+        "acceptance": [
+          0,
+          0
+        ],
+        "costVsOracle": null,
+        "invariantViolations": 0,
+        "recovery": [
+          0,
+          0
+        ],
+        "solveMsMean": 450.9433333333333
+      }
+    ]
+  }
+}
