@@ -143,12 +143,12 @@ describe('scope escalation is refused', () => {
   });
 
   it('serves the public PayPal client id and never the secret', async () => {
-    const app = createApp({ engine: stubEngine(), gateway: new TestGateway(), dataDir: ':memory:', config: loadConfig({ PAYPAL_CLIENT_ID: 'public-client-id', PAYPAL_CLIENT_SECRET: 'do-not-show-this' }) });
+    const app = createApp({ engine: stubEngine(), gateway: new TestGateway(), dataDir: ':memory:', config: loadConfig({ PAYPAL_CLIENT_ID: 'pub-test-id', PAYPAL_CLIENT_SECRET: 'hidden-secret' }) });
     const cfg: any = await (await app.request('/api/config')).json();
-    expect(cfg.paypal.clientId).toBe('public-client-id');
+    expect(cfg.paypal.clientId).toBe('pub-test-id');
     const st: any = await (await app.request('/api/status')).json();
-    expect(st.paypal.clientId).toBe('public-client-id');
-    expect(JSON.stringify(cfg) + JSON.stringify(st)).not.toContain('do-not-show-this');
+    expect(st.paypal.clientId).toBe('pub-test-id');
+    expect(JSON.stringify(cfg) + JSON.stringify(st)).not.toContain('hidden-secret');
   });
 });
 
