@@ -1,0 +1,24 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="color-scheme" content="light dark" />
+    <title>Schedule dev</title>
+    <style>
+      html { background: #fff; color: #16181d; }
+      :root[data-theme='dark'] { background: #0f1115; color: #ecedf0; }
+      @media (prefers-color-scheme: dark) { :root:not([data-theme='light']) { background: #0f1115; color: #ecedf0; } }
+      body { margin: 0; font-family: 'Geist Variable', system-ui, sans-serif; }
+      main { max-width: 1200px; margin: 0 auto; padding: 20px 16px 48px; display: grid; gap: 16px; }
+      .bar { display: flex; gap: 8px; flex-wrap: wrap; }
+      button { font: inherit; padding: 6px 12px; border-radius: 8px; border: 1px solid #8884; background: transparent; color: inherit; cursor: pointer; }
+      button[aria-pressed='true'] { background: #8883; }
+      pre { font-size: 12px; margin: 0; }
+    </style>
+  </head>
+  <body>
+    <div id="root"></div>
+    <script type="module" src="./main.tsx"></script>
+  </body>
+</html>
