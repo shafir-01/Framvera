@@ -1,0 +1,213 @@
+import { describe, expect, it } from 'vitest';
+import { makeApp, post, realEngineReady, stubEngine, TestGateway } from './helpers.ts';
+
+/* eslint-disable @typescript-eslint/no-explicit-any */
+async function flow(app: ReturnType<typeof makeApp>) {
+  const m: any = await (await post(app, '/api/markets', {})).json();
+  const an: any = await (await post(app, `/api/markets/${m.id}/analyze`)).json();
+  const inv: any = await (await post(app, `/api/markets/${m.id}/invent`)).json();
+  const neg: any = await (await post(app, `/api/markets/${m.id}/negotiate`)).json();
+  const ver: any = await (await post(app, `/api/plans/${neg.planId}/verify`)).json();
+  const agreement: any = await (await post(app, `/api/agreements/${neg.planId}/commit`)).json();
+  return { m, an, inv, neg, ver, agreement };
+}
+
+describe('flagship through the API (stub engine, fake gateway)', () => {
+  it('analyze infeasible -> invent -> negotiate -> verify -> commit -> pay with approval -> disrupt -> recover', async () => {
+    const gw = new TestGateway();
+    const app = makeApp(stubEngine(), gw);
+    const { m, an, inv, neg, ver, agreement } = await flow(app);
+    expect(an.status).toBe('infeasible');
+    expect(an.core.proven).toBe(true);
+    expect(inv.interventions[0].unlocks).toBe(true);
+    expect(neg.planId).toBeTruthy();
+    expect(ver.ok).toBe(true);
+    expect(agreement.state).toBe('COMMITTED');
+
+    const ap = await post(app, `/api/agreements/${agreement.id}/approve-payment`, { market: m.id, payee: 'a1', termsHash: agreement.termsHash, amount: { currency: 'SEK', minor: 3_000_000 } });
+    expect(ap.status).toBe(200);
+    const { approvalToken } = (await ap.json()) as any;
+    const order = await post(app, '/api/payments/orders', { approvalToken, market: m.id });
+    expect(order.status).toBe(201);
+    const pi: any = await order.json();
+    expect(pi.state).toBe('PAYER_ACTION_REQUIRED');
+    expect(pi.paypal.env).toBe('sandbox');
+
+    const again: any = await (await post(app, '/api/payments/orders', { approvalToken, market: m.id })).json();
+    expect(again.id).toBe(pi.id);
+    expect(gw.created).toBe(1);
+
+    const fresh: any = await (await app.request(`/api/payments/${pi.id}`)).json();
+    expect(fresh.state).toBe('APPROVED');
+    const cap: any = await (await post(app, `/api/payments/${pi.id}/capture`)).json();
+    expect(cap.state).toBe('CAPTURE_COMPLETED');
+
+    const d: any = await (await post(app, `/api/markets/${m.id}/disrupt`, { kind: 'withdraw', actor: 'a1' })).json();
+    expect(d.affected).toHaveLength(1);
+    const rec: any = await (await post(app, `/api/markets/${m.id}/recover`, {})).json();
+    expect(rec.feasible).toBe(true);
+    expect(rec.kept).toContain('o2');
+
+    const trace: any = await (await app.request(`/api/markets/${m.id}/trace/a1`)).json();
+    expect(trace.events.length).toBeGreaterThan(0);
+  });
+
+  it('streams market events over SSE', async () => {
+    const app = makeApp(stubEngine());
+    const m: any = await (await post(app, '/api/markets', {})).json();
+    const res = await app.request(`/api/markets/${m.id}/events`);
+    expect(res.headers.get('content-type')).toContain('text/event-stream');
+    const reader = res.body!.getReader();
+    const { value } = await reader.read();
+    expect(new TextDecoder().decode(value)).toContain('world.created');
+    await reader.cancel();
+  });
+});
+
+describe('scope escalation is refused', () => {
+  async function committed() {
+    const gw = new TestGateway();
+    const app = makeApp(stubEngine(), gw);
+    const ctx = await flow(app);
+    return { app, gw, ...ctx };
+  }
+
+  it('a proposal cannot become a payment: no token, forged token, and skipping approval all fail', async () => {
+    const { app, gw, m, agreement } = await committed();
+    const attempts = [
+      { agreementId: agreement.id, market: m.id, payee: 'a1' },
+      { agreementId: agreement.id, market: m.id, approvalToken: 'forged.token' },
+      { agreementId: agreement.id, market: m.id, approvalToken: '' },
+    ];
+    for (const a of attempts) expect((await post(app, '/api/payments/orders', a)).status).toBe(403);
+    expect(gw.created).toBe(0);
+    expect((await post(app, '/api/payments/pay-x/capture')).status).toBe(404);
+  });
+
+  it('approval is bound to exact terms hash and amount', async () => {
+    const { app, agreement, m } = await committed();
+    const wrongHash = await post(app, `/api/agreements/${agreement.id}/approve-payment`, { market: m.id, payee: 'a1', termsHash: 'deadbeef', amount: { currency: 'SEK', minor: 3_000_000 } });
+    expect(wrongHash.status).toBe(409);
+    const wrongAmount = await post(app, `/api/agreements/${agreement.id}/approve-payment`, { market: m.id, payee: 'a1', termsHash: agreement.termsHash, amount: { currency: 'SEK', minor: 1 } });
+    expect(wrongAmount.status).toBe(409);
+  });
+
+  it('an approval for one supplier cannot be replayed for another or reused after use', async () => {
+    const { app, gw, agreement, m } = await committed();
+    const { approvalToken } = (await (await post(app, `/api/agreements/${agreement.id}/approve-payment`, { market: m.id, payee: 'a2', termsHash: agreement.termsHash, amount: { currency: 'SEK', minor: 2_430_000 } })).json()) as any;
+    const pi: any = await (await post(app, '/api/payments/orders', { approvalToken, market: m.id })).json();
+    expect(pi.payee).toBe('a2');
+    expect(pi.amount.minor).toBe(2_430_000);
+    expect(gw.created).toBe(1);
+    const tampered = approvalToken.replace(/^./, (c: string) => (c === 'A' ? 'B' : 'A'));
+    expect((await post(app, '/api/payments/orders', { approvalToken: tampered, market: m.id })).status).toBe(403);
+  });
+
+  it('refunds also require an approval', async () => {
+    const { app, agreement, m } = await committed();
+    const { approvalToken } = (await (await post(app, `/api/agreements/${agreement.id}/approve-payment`, { market: m.id, payee: 'a1', termsHash: agreement.termsHash, amount: { currency: 'SEK', minor: 3_000_000 } })).json()) as any;
+    const pi: any = await (await post(app, '/api/payments/orders', { approvalToken, market: m.id })).json();
+    await post(app, `/api/payments/${pi.id}/capture`);
+    expect((await post(app, `/api/payments/${pi.id}/refund`, {})).status).toBe(403);
+  });
+
+  it('payments cannot be prepared when the buyer withheld that scope', async () => {
+    const engine = stubEngine();
+    const base = engine.flagshipWorld!;
+    engine.flagshipWorld = () => {
+      const r = base();
+      return { ...r, intent: { ...r.intent, authority: { ...r.intent.authority, mayPreparePayments: false } } };
+    };
+    const app = makeApp(engine);
+    const { m, agreement } = await flow(app);
+    const r = await post(app, `/api/agreements/${agreement.id}/approve-payment`, { market: m.id, payee: 'a1', termsHash: agreement.termsHash, amount: { currency: 'SEK', minor: 3_000_000 } });
+    expect(r.status).toBe(403);
+  });
+});
+
+describe('platform guards', () => {
+  it('reports status as booleans and counts, never secrets', async () => {
+    const app = makeApp(stubEngine());
+    const s: any = await (await app.request('/api/status')).json();
+    expect(typeof s.services.paypalConfigured).toBe('boolean');
+    expect(typeof s.counts.markets).toBe('number');
+    expect(JSON.stringify(s)).not.toMatch(/secret|key|token/i);
+  });
+
+  it('rate limits per IP', async () => {
+    const app = makeApp(stubEngine(), undefined, { rateLimitPerMin: 3 });
+    const codes: number[] = [];
+    for (let i = 0; i < 5; i++) codes.push((await app.request('/api/status', { headers: { 'x-forwarded-for': '9.9.9.9' } })).status);
+    expect(codes).toEqual([200, 200, 200, 429, 429]);
+    expect((await app.request('/api/status', { headers: { 'x-forwarded-for': '8.8.8.8' } })).status).toBe(200);
+  });
+
+  it('answers 501 for missing modules and never leaks stack traces', async () => {
+    const app = makeApp({ ...stubEngine(), solve: undefined });
+    const m: any = await (await post(app, '/api/markets', {})).json();
+    const r = await post(app, `/api/markets/${m.id}/analyze`);
+    expect(r.status).toBe(501);
+    const boom = stubEngine();
+    boom.solve = async () => {
+      throw new Error('secret-detail at C:\\path\\file.ts:12');
+    };
+    const app2 = makeApp(boom);
+    const m2: any = await (await post(app2, '/api/markets', {})).json();
+    const r2 = await post(app2, `/api/markets/${m2.id}/analyze`);
+    expect(r2.status).toBe(500);
+    expect(JSON.stringify(await r2.json())).not.toMatch(/secret-detail|\.ts/);
+  });
+
+  it('kill switch and daily budget stop live AI calls', async () => {
+    const seen: boolean[] = [];
+    const e = stubEngine();
+    e.compileIntent = async (_t: string, _w: unknown, o: { live: boolean }) => {
+      seen.push(o.live);
+      return { intent: null, questions: [], model: 'x', live: o.live };
+    };
+    const off = makeApp(e, undefined, { aiEnabled: false });
+    await post(off, '/api/intents/compile', { text: 'hello' });
+    const capped = makeApp(e, undefined, { dailyAiCalls: 1 });
+    await post(capped, '/api/intents/compile', { text: 'a' });
+    await post(capped, '/api/intents/compile', { text: 'b' });
+    expect(seen).toEqual([false, true, false]);
+  });
+
+  it('webhooks verify the signature and record each event once', async () => {
+    const app = makeApp(stubEngine());
+    const ev = JSON.stringify({ id: 'WH-1', event_type: 'PAYMENT.CAPTURE.COMPLETED', resource: { id: 'CAP-1', status: 'COMPLETED' } });
+    expect((await post(app, '/api/webhooks/paypal', JSON.parse(ev), { 'x-test-sig': 'bad' })).status).toBe(400);
+    const ok: any = await (await post(app, '/api/webhooks/paypal', JSON.parse(ev), { 'x-test-sig': 'valid' })).json();
+    expect(ok.duplicate).toBeUndefined();
+    const dup: any = await (await post(app, '/api/webhooks/paypal', JSON.parse(ev), { 'x-test-sig': 'valid' })).json();
+    expect(dup.duplicate).toBe(true);
+  });
+
+  it('allows same origin, localhost and the Pages origin only', async () => {
+    const app = makeApp(stubEngine());
+    const hit = (origin: string) => Promise.resolve(app.request('/api/status', { headers: { origin } })).then((r) => r.headers.get('access-control-allow-origin'));
+    expect(await hit('http://localhost:5173')).toBe('http://localhost:5173');
+    expect(await hit('https://shafir-01.github.io')).toBe('https://shafir-01.github.io');
+    expect(await hit('https://evil.example')).toBeFalsy();
+    const blocked = await post(app, '/api/markets', {}, { origin: 'https://evil.example' });
+    expect(blocked.status).toBe(403);
+  });
+});
+
+describe('flagship with the real modules', async () => {
+  const { engine, ok } = await realEngineReady();
+  it.skipIf(!ok)('runs end to end with FakeGateway', async () => {
+    const gw = new (engine as any).FakeGateway();
+    const app = makeApp(engine, gw);
+    const { m, an, neg, ver, agreement } = await flow(app);
+    expect(an.status).toBe('infeasible');
+    expect(ver.ok).toBe(true);
+    expect(agreement.state).toBeTruthy();
+    const payee = agreement.obligations[0].actor;
+    const amount = agreement.obligations.filter((o: any) => o.actor === payee).reduce((a: number, o: any) => a + o.amount.minor, 0);
+    const ap: any = await (await post(app, `/api/agreements/${agreement.id}/approve-payment`, { market: m.id, payee, termsHash: agreement.termsHash, amount: { currency: agreement.obligations[0].amount.currency, minor: amount } })).json();
+    const order = await post(app, '/api/payments/orders', { approvalToken: ap.approvalToken, market: m.id });
+    expect(order.status).toBe(201);
+    expect(neg.planId).toBeTruthy();
+  });
+});

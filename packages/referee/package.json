@@ -1,0 +1,16 @@
+{
+  "name": "@framvera/referee",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "dependencies": {
+    "@framvera/contracts": "*",
+    "@framvera/market": "*",
+    "@framvera/solver": "*",
+    "@framvera/negotiation": "*",
+    "@framvera/obligations": "*"
+  }
+}

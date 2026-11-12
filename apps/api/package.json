@@ -1,0 +1,24 @@
+{
+  "name": "@framvera/api",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "tsx watch --env-file-if-exists=../../.env src/server.ts",
+    "start": "tsx --env-file-if-exists=../../.env src/server.ts"
+  },
+  "dependencies": {
+    "@framvera/contracts": "*",
+    "@framvera/market": "*",
+    "@framvera/solver": "*",
+    "@framvera/negotiation": "*",
+    "@framvera/obligations": "*",
+    "@framvera/paypal": "*",
+    "@framvera/referee": "*",
+    "@anthropic-ai/sdk": "*",
+    "@hono/node-server": "^1.14.0",
+    "hono": "^4.7.0",
+    "tsx": "^4.20.0",
+    "zod": "^4.0.0"
+  }
+}
