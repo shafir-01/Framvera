@@ -1840,3 +1840,47 @@ dialog.drawer[open] {
   display: inline-block;
   color: var(--ink-2);
 }
+
+/* ---------- Embedded components follow the product palette ---------- */
+.page .act .fv-host .fv-sched {
+  --fv-ink: var(--ink);
+  --fv-muted: var(--ink-3);
+  --fv-line: var(--line);
+  --fv-surface: var(--surface);
+  --fv-lane: var(--bg-sunk);
+  --fv-lane-alt: var(--bg);
+  --fv-bar: var(--ink);
+  --fv-bar-ink: var(--bg);
+  --fv-win: var(--bg-sunk);
+  --fv-win-line: var(--line-2);
+  --fv-concede: var(--accent);
+  --fv-concede-soft: var(--accent-soft);
+  --fv-risk: var(--ink-2);
+  --fv-risk-soft: var(--bg-sunk);
+  --fv-withdrawn: var(--ink-4);
+  --fv-new: var(--accent);
+  --fv-new-ink: var(--accent-ink);
+  --fv-deadline: var(--ink);
+  --fv-edge: var(--ink-3);
+}
+.page .records-shell .obs,
+.page .records-shell .obs[data-obs-theme] {
+  --obs-bg: var(--bg);
+  --obs-surface: var(--surface);
+  --obs-surface-2: var(--bg-sunk);
+  --obs-ink: var(--ink);
+  --obs-ink-soft: var(--ink-2);
+  --obs-line: var(--line);
+  --obs-accent: var(--accent);
+  --obs-hover: var(--bg-sunk);
+  --obs-selected: var(--accent-soft);
+  --obs-bad: var(--ink);
+  --obs-bad-bg: var(--bg-sunk);
+  --obs-good: var(--accent);
+  --obs-good-bg: var(--accent-soft);
+  --obs-warn: var(--ink-2);
+  --obs-warn-bg: var(--bg-sunk);
+  --obs-derived: var(--accent);
+  --obs-derived-bg: var(--accent-soft);
+  --obs-neutral-bg: var(--bg-sunk);
+}

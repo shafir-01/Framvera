@@ -60,15 +60,19 @@ export function AgreementSection({ theme }: { theme: 'light' | 'dark' }) {
         </p>
       </div>
 
-      <Schedule
-        plan={plan}
-        agreement={ag}
-        world={negotiated}
-        originalWorld={s.market.world}
-        deadline={s.intent.deadline}
-        loading="Drawing the schedule"
-        fallback={<PlanTable plan={plan} world={negotiated} />}
-      />
+      <div className="fv-host">
+  
+        <Schedule
+          plan={plan}
+          agreement={ag}
+          world={negotiated}
+          originalWorld={s.market.world}
+          deadline={s.intent.deadline}
+          loading="Drawing the schedule"
+          fallback={<PlanTable plan={plan} world={negotiated} />}
+        />
+
+      </div>
 
       {!ag ? (
         <div className="approve">

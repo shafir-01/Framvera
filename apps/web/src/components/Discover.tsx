@@ -9,7 +9,7 @@ import { Surgery } from '../mounts.tsx';
 export const solveTime = (ms: number) => (ms >= 1000 ? `${(ms / 1000).toFixed(1)} s` : `${Math.round(ms)} ms`);
 
 export function Discover() {
-  const { s, api } = useStore();
+  const { s, api, act } = useStore();
   const [focus, setFocus] = useState<string | null>(null);
   const [surgery, setSurgery] = useState(false);
   const [all, setAll] = useState(false);
@@ -143,7 +143,18 @@ export function Discover() {
           </div>
           {surgery && s.market ? (
             <div style={{ marginTop: 24 }}>
-              <Surgery api={api} market={s.market.market} world={ix.world} intent={s.intent} core={core} interventions={s.invention?.interventions} loading="Opening the constraint editor" />
+              <Surgery api={api} market={s.market.market} world={ix.world} intent={s.intent} core={core}
+                interventions={s.invention?.interventions}
+                onCommitBranch={
+                  s.status?.services.negotiateInterventions === true && !s.negotiation
+                    ? (b) => {
+                        void act.ask([{ id: b.id, concessions: [...b.concessions], unlocks: b.status === 'possible', totalAfter: b.total, method: 'heuristic', minimality: 'Chosen by you in the constraint editor; not checked for minimality.' }]);
+                        document.getElementById('invent')?.scrollIntoView({ block: 'start' });
+                      }
+                    : undefined
+                }
+                loading="Opening the constraint editor"
+              />
             </div>
           ) : null}
         </>

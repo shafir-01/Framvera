@@ -59,17 +59,19 @@ export function Adapt() {
 
       {d ? (
         <div style={{ marginTop: 28 }}>
-          <Schedule
-            plan={rec?.plan ?? plan}
-            agreement={s.recovery?.agreement ?? ag}
-            recovery={rec}
-            world={world ?? negotiated}
-            originalWorld={s.market.world}
-            deadline={s.intent.deadline}
-            disruption={d.disruption}
-            loading="Drawing the schedule"
-            fallback={<PlanTable plan={rec?.plan ?? plan} world={world ?? negotiated} />}
-          />
+          <div className="fv-host">
+            <Schedule
+              plan={rec?.plan ?? plan}
+              agreement={s.recovery?.agreement ?? ag}
+              recovery={rec}
+              world={world ?? negotiated}
+              originalWorld={s.market.world}
+              deadline={s.intent.deadline}
+              disruption={d.disruption}
+              loading="Drawing the schedule"
+              fallback={<PlanTable plan={rec?.plan ?? plan} world={world ?? negotiated} />}
+            />
+          </div>
         </div>
       ) : null}
 
@@ -150,7 +152,7 @@ export function Adapt() {
                       <li key={`r${i}`}>
                         <div className="r-what">
                           {r.description}
-                          {r.extraCost ? <span className="r-cost num">{diff > 0 ? ` · ${money({ currency, minor: diff })} cheaper` : ` · ${money(r.extraCost, { sign: r.extraCost.minor > 0 })}`}</span> : null}
+                          {r.extraCost && r.extraCost.minor > 0 ? <span className="r-cost num">{diff > 0 ? ` · ${money({ currency, minor: diff })} cheaper` : ` · ${money(r.extraCost, { sign: r.extraCost.minor > 0 })}`}</span> : null}
                         </div>
                         <div className="r-why">{plainReason(r.reason)}</div>
                       </li>

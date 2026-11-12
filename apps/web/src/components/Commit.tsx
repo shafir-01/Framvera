@@ -40,6 +40,7 @@ export function ProofDrawer({ payment, onClose }: { payment: PaymentIntent | nul
   const live = payment ? (s.payments[payment.id] ?? payment) : null;
   const name = world?.actors.find((a) => a.id === live?.payee)?.name ?? live?.payee;
   const busy = (s.busy === 'refresh' || s.busy === 'refund') && s.busyKey === live?.id;
+  const [denied, setDenied] = useState<string | null>(null);
   return (
     <Drawer open={!!live} onClose={onClose} label="PayPal proof" eyebrow={<SourceTag kind="sandbox">PayPal Sandbox · test money</SourceTag>} title={`Payment to ${name ?? ''}`}>
       {live ? (
@@ -56,12 +57,20 @@ export function ProofDrawer({ payment, onClose }: { payment: PaymentIntent | nul
               {s.busy === 'refresh' && s.busyKey === live.id ? 'Fetching…' : 'Fetch again from PayPal'}
             </button>
             {paid(live) ? (
-              <button className="btn btn-quiet btn-small" disabled={busy} onClick={() => void act.refund(live.id)}>
+              <button
+                className="btn btn-quiet btn-small"
+                disabled={busy}
+                onClick={async () => {
+                  const r = await act.refund(live.id);
+                  setDenied(r && r.state !== 'REFUND_COMPLETED' && r.state !== 'REFUND_PENDING' ? r.state : null);
+                }}
+              >
                 {s.busy === 'refund' && s.busyKey === live.id ? 'Refunding…' : `Approve refund of ${money(live.charged)}`}
               </button>
             ) : null}
           </div>
           {s.error && (s.error.step === 'refresh' || s.error.step === 'refund') ? <ErrorNote title="PayPal did not confirm.">{s.error.message}</ErrorNote> : null}
+          {denied ? <ErrorNote title={denied === 'REFUND_DENIED' ? 'PayPal denied the refund. The capture stands.' : 'The refund outcome is not confirmed yet.'}>Fetch again from PayPal to see its current record.</ErrorNote> : null}
           <div>
             <div className="h3">In Framvera</div>
             <dl>

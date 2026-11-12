@@ -202,6 +202,7 @@ export interface SurgeryProps {
   intent: Intent;
   core: InfeasibleCore;
   interventions?: Intervention[];
+  onCommitBranch?: (branch: { id: Id; label: string; concessions: readonly Concession[]; status: string; total?: Money }) => void;
   api?: Api;
   market?: Id;
 }
@@ -243,7 +244,7 @@ export interface Api {
   compileIntent(market: Id, draft: IntentDraft): Promise<CompiledIntent>;
   analyze(market: Id, intent: Intent): Promise<AnalyzeResult>;
   invent(market: Id): Promise<InventResult>;
-  negotiate(market: Id): Promise<NegotiateResult | AwaitingSeller>;
+  negotiate(market: Id, opts?: { interventions?: Intervention[] }): Promise<NegotiateResult | AwaitingSeller>;
   mintSeat(market: Id, actor: Id): Promise<SeatLink>;
   seats(market: Id): Promise<SeatInfo[]>;
   releaseSeat(market: Id, actor: Id): Promise<void>;
@@ -448,8 +449,8 @@ export function httpApi(base = '', transport: Transport = { fetch: (...a) => fet
       const r = await call('POST', `/api/markets/${enc(market)}/invent`, {}, 90000);
       return { interventions: arr(r.interventions), coalitions: arr(r.coalitions), findings: arr(r.findings) };
     },
-    negotiate: async (market) => {
-      const r = await call('POST', `/api/markets/${enc(market)}/negotiate`, {}, 120000);
+    negotiate: async (market, opts) => {
+      const r = await call('POST', `/api/markets/${enc(market)}/negotiate`, opts?.interventions ? { interventions: opts.interventions } : {}, 120000);
       return r && r.awaitingSeller ? { awaiting: r.awaitingSeller } : normNegotiation(r);
     },
     mintSeat: (market, actor) => call<SeatLink>('POST', `/api/markets/${enc(market)}/seats`, { actor }),

@@ -1,5 +1,5 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useReducer, useRef, type ReactNode } from 'react';
-import type { Agreement, Id, Intent, MarketEvent, Money, Obligation, PaymentIntent, World } from '@framvera/contracts';
+import type { Agreement, Id, Intent, Intervention, MarketEvent, Money, Obligation, PaymentIntent, World } from '@framvera/contracts';
 import {
   ApiError,
   isAwaiting,
@@ -113,12 +113,12 @@ export interface Actions {
   setDraft(d: IntentDraft): void;
   startWith(started: Started): Promise<void>;
   start(): Promise<void>;
-  ask(): Promise<void>;
+  ask(interventions?: Intervention[]): Promise<void>;
   commit(): Promise<void>;
   startPayment(payee: Id): Promise<PaymentIntent | undefined>;
   capture(payment: Id): Promise<PaymentIntent | undefined>;
   refreshPayment(payment: Id): Promise<void>;
-  refund(payment: Id): Promise<void>;
+  refund(payment: Id): Promise<PaymentIntent | undefined>;
   breakDeal(): Promise<void>;
   commitRecovery(): Promise<void>;
   reset(): void;
@@ -350,11 +350,11 @@ export function StoreProvider({ api, initialDraft, children }: { api: Api; initi
         window.scrollTo({ top: 0, behavior: reduced() ? 'auto' : 'smooth' });
         await explore(market, st.intent, run);
       },
-      ask: async () => {
+      ask: async (interventions) => {
         const cur = ref.current;
         if (!cur.market) return;
         const run = runId.current;
-        const r = await step('negotiate', () => api.negotiate(cur.market!.market), run);
+        const r = await step('negotiate', () => api.negotiate(cur.market!.market, interventions ? { interventions } : undefined), run);
         if (!r) return;
         if (isAwaiting(r)) {
           dispatch({ type: 'patch', patch: { awaiting: r.awaiting, busy: undefined } });
@@ -415,9 +415,10 @@ export function StoreProvider({ api, initialDraft, children }: { api: Api; initi
           undefined,
           payment,
         );
-        if (!r) return;
+        if (!r) return undefined;
         dispatch({ type: 'payment', payment: r });
         dispatch({ type: 'busy' });
+        return r;
       },
       breakDeal: async () => {
         const cur = ref.current;
@@ -466,7 +467,7 @@ export function disruptionTarget(agreement: Agreement, world: World): { actor: I
   const live = agreement.obligations.filter((o) => LIVE.includes(o.state));
   const feeds = new Set(world.stages.flatMap((st) => st.after));
   const sinks = live.filter((o) => !feeds.has(o.stage));
-  const pick = sinks[0] ?? live.at(-1);
+  const pick = sinks.at(-1) ?? live.at(-1);
   return pick ? { actor: pick.actor, offer: pick.offer } : undefined;
 }
 
