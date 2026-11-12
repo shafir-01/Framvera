@@ -32,10 +32,10 @@ export const STRUCTURAL: ReadonlySet<ConstraintRef['kind']> = new Set(['demand',
  * is minimal with respect to the remaining groups: dropping any single member makes the problem
  * feasible. It is not claimed to be the smallest such set.
  */
-export async function explainWith(build: (disabled: ReadonlySet<string>) => Compiled, timeLimitMs = 20000): Promise<InfeasibleCore> {
+export async function explainWith(build: (disabled: ReadonlySet<string>) => Compiled, timeLimitMs = 60000): Promise<InfeasibleCore> {
   const c = build(new Set());
   const t0 = performance.now();
-  const perTest = Math.max(500, Math.min(3000, timeLimitMs / 4));
+  const perTest = Math.max(500, Math.min(10000, timeLimitMs / 4));
   const disabled = new Set<string>();
   const modelFor = (extra: string[]) => {
     const model = build(new Set([...disabled, ...extra])).model;
