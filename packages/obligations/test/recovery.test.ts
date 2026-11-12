@@ -60,7 +60,7 @@ describe('recover', () => {
       repair: () => null,
     });
     const pay = payment(agreement, 'sP1', 'CAPTURE_COMPLETED');
-    const r = await recover(agreement, world(), intent(), d, { solver, payments: [pay] });
+    const r = await recover(agreement, world(), intent({ budget: { currency: 'SEK', minor: 5_000_000 } }), d, { solver, payments: [pay] });
     expect(solver.calls).toContain('cost');
     expect(r.feasible).toBe(true);
     const scratch = r.candidates.find((c) => c.source === 'solver-scratch')!;
@@ -78,6 +78,23 @@ describe('recover', () => {
     expect(r.amendment!.version).toBe(2);
     expect(r.amendment!.state).toBe('PROPOSED');
     expect(agreement.version).toBe(1);
+  });
+
+  it('counts money captured for a released supplier against the budget until its refund is confirmed', async () => {
+    const { agreement } = committed();
+    const d = D({ kind: 'withdraw', actor: 'sP1', detail: 'Söder Print withdraws' });
+    const pay = payment(agreement, 'sP1', 'CAPTURE_COMPLETED');
+    const held = await recover(agreement, world(), intent(), d, { solver: null, payments: [pay] });
+    expect(held.feasible).toBe(false);
+    expect(held.candidates.some((c) => c.reasons.some((x) => /already paid for released obligations/.test(x)))).toBe(true);
+    expect(held.payments.refunds.map((x) => [x.payment, x.amount.minor])).toEqual([[pay.id, pay.charged.minor]]);
+    const raise = held.concessionsNeeded?.find((c) => c.target.kind === 'intent' && c.target.field === 'budget');
+
+    const refunded = { ...pay, state: 'REFUND_COMPLETED' as const, paypal: { ...pay.paypal, refunds: [{ id: 'R1', status: 'COMPLETED', amount: pay.charged }] } };
+    const after = await recover(agreement, world(), intent(), d, { solver: null, payments: [refunded as typeof pay] });
+    expect(after.feasible).toBe(true);
+    expect(after.plan!.total.minor).toBeLessThanOrEqual(intent().budget.minor);
+    expect(Number(raise?.to)).toBeGreaterThan(intent().budget.minor);
   });
 
   it('works without a solver and the original plan is a rejected counterfactual', async () => {

@@ -211,13 +211,31 @@ export interface ProposeOptions {
   operationKey?: string;
 }
 
-/** A provider-neutral payment awaiting order creation. Checks the buyer's spending permission. */
+const PAYABLE_AGREEMENT: Agreement['state'][] = ['COMMITTED', 'FULFILLING'];
+const PAYABLE_OBLIGATION: Obligation['state'][] = ['PENDING', 'ACTIVE', 'AT_RISK', 'FULFILLED'];
+
+/**
+ * A provider-neutral payment awaiting order creation. Pays only live obligations of a committed agreement that
+ * belong to the payee, in the buyer's currency, within the buyer's spending permission.
+ */
 export function proposePayment(agreement: Agreement, intent: Intent, opts: ProposeOptions): PaymentIntent | PaymentRuleError {
   if (!intent.authority.mayPreparePayments) return fail('authority', 'The buyer has not authorised preparing payments.');
+  if (!PAYABLE_AGREEMENT.includes(agreement.state)) return fail('agreement-state', `Agreement ${agreement.id} is ${agreement.state}; payments need a committed agreement.`);
+  if (!opts.obligations.length) return fail('obligations', 'A payment needs at least one obligation.');
+  const own = new Map(agreement.obligations.map((o) => [o.id, o]));
+  for (const o of opts.obligations) {
+    const term = own.get(o.id);
+    if (!term || term.agreement !== agreement.id) return fail('obligations', `Obligation ${o.id} is not part of agreement ${agreement.id}.`);
+    if (term.actor !== opts.payee) return fail('payee', `Obligation ${o.id} belongs to ${term.actor}, not ${opts.payee}.`);
+    if (!PAYABLE_OBLIGATION.includes(term.state)) return fail('obligations', `Obligation ${o.id} is ${term.state}.`);
+    if (term.amount.currency !== intent.budget.currency || term.amount.minor !== o.amount.minor) return fail('obligations', `Obligation ${o.id} does not match the agreed amount.`);
+  }
+  if (new Set(opts.obligations.map((o) => o.id)).size !== opts.obligations.length) return fail('obligations', 'An obligation is listed twice.');
   const amount = sumMoney(
-    opts.obligations.map((o) => o.amount),
+    opts.obligations.map((o) => own.get(o.id)!.amount),
     intent.budget.currency,
   );
+  if (intent.authority.maxSpend.currency !== amount.currency) return fail('authority', `The spending limit is in ${intent.authority.maxSpend.currency}, the payment in ${amount.currency}.`);
   if (amount.minor > intent.authority.maxSpend.minor) return fail('authority', 'Payment exceeds the spending authority.');
   const key = opts.operationKey ?? `pay:${agreement.id}:v${agreement.version}:${opts.payee}`;
   return {

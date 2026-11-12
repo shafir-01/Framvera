@@ -114,6 +114,15 @@ export function proposeAgreement(plan: Plan, intent: Intent, opts: DraftOptions 
   return moveAgreement(draftAgreement(plan, intent, opts), 'PROPOSED');
 }
 
+const SEAL = Symbol('acceptance');
+const SESSION = globalThis.crypto.randomUUID();
+const sealOf = (actor: Id, termsHash: string, message: Id) => `${SESSION}|${actor}|${termsHash}|${message}`;
+
+/** True when an acceptance was issued by `acceptMessage` in this process for exactly these terms. Copies rebuilt from text are not. */
+function isSealed(input: AcceptanceInput, acc: PartyAcceptance): boolean {
+  return (input as { [SEAL]?: string })[SEAL] === sealOf(acc.actor, acc.termsHash, acc.message);
+}
+
 function normalize(input: AcceptanceInput): PartyAcceptance | null {
   if ('type' in input && input.type === 'Accept') {
     return { actor: input.from, message: input.id, termsHash: input.termsHash, basis: input.basis };
@@ -178,11 +187,23 @@ export interface AmendmentSpec {
   add: Omit<Obligation, 'id' | 'agreement' | 'state' | 'replaces'>[];
 }
 
-/** A new version that must be accepted by every party. The original object is never touched. */
-export function amend(a: Agreement, spec: AmendmentSpec, buyer: Id = BUYER, world?: World): Agreement {
+export interface AmendOptions {
+  /** Obligations whose supplier can no longer deliver, as recorded by a disruption. Releasing them needs no acceptance from that supplier. */
+  released?: Id[];
+}
+
+/**
+ * A new version that must be accepted by every party. The original object is never touched. A supplier whose
+ * live obligation the amendment cancels or replaces stays a party, so the change binds only once that supplier
+ * accepts the new terms hash, unless the obligation is released because the supplier failed.
+ */
+export function amend(a: Agreement, spec: AmendmentSpec, buyer: Id = BUYER, world?: World, opts: AmendOptions = {}): Agreement {
   if (!BINDING.includes(a.state)) throw new ObligationError('agreement-transition', `Only a committed agreement can be amended; ${a.id} is ${a.state}.`);
   const version = a.version + 1;
   const byId = new Map(a.obligations.map((o) => [o.id, o]));
+  const listed = [...spec.keep, ...spec.replace.map((r) => r.replaces)];
+  const twice = listed.find((id, i) => listed.indexOf(id) !== i);
+  if (twice) throw new ObligationError('duplicate-obligation', `Obligation ${twice} is listed more than once in the amendment.`);
   const kept = spec.keep.map((id) => {
     const o = byId.get(id);
     if (!o) throw new ObligationError('unknown-obligation', `No obligation ${id} in ${a.id}.`);
@@ -198,7 +219,9 @@ export function amend(a: Agreement, spec: AmendmentSpec, buyer: Id = BUYER, worl
     return parts.map((p, k) => ({ ...p, id: parts.length === 1 ? `obl:${a.id}:v${version}:${i}` : `obl:${a.id}:v${version}:${i}.${k}`, agreement: a.id, state: 'PENDING' }));
   });
   const obligations = [...kept, ...replaced, ...added];
-  const parties = [buyer, ...new Set(obligations.map((o) => o.actor))];
+  const released = new Set(opts.released ?? []);
+  const affected = a.obligations.filter((o) => LIVE_OBLIGATION.includes(o.state) && !spec.keep.includes(o.id) && !released.has(o.id));
+  const parties = [buyer, ...new Set([...obligations, ...affected].map((o) => o.actor).filter((p) => p !== buyer))];
   const base = { id: a.id, version, intent: a.intent, plan: a.plan, parties, obligations };
   return { ...base, state: 'PROPOSED', termsHash: termsHashOf(base), acceptances: [], createdAt: a.createdAt };
 }
@@ -226,16 +249,17 @@ export function commit(plan: Plan, intent: Intent, decisions: readonly Acceptanc
     intent.budget.currency,
   );
   if (total.minor > intent.budget.minor) throw new ObligationError('budget', `Plan total ${total.minor} exceeds budget ${intent.budget.minor}.`);
-  if (intent.authority.maxSpend.currency === total.currency && total.minor > intent.authority.maxSpend.minor) {
-    throw new ObligationError('authority', 'Plan total exceeds the spending authority.');
+  if (intent.authority.maxSpend.currency !== total.currency) {
+    throw new ObligationError('authority', `The spending limit is in ${intent.authority.maxSpend.currency}, the plan in ${total.currency}.`);
   }
+  if (total.minor > intent.authority.maxSpend.minor) throw new ObligationError('authority', 'Plan total exceeds the spending authority.');
   if (!intent.authority.mayReserve) throw new ObligationError('authority', 'The buyer has not authorised reserving capacity.');
   if (opts.world) assertCapacity(plan, opts.world, opts.reserved);
   let a = proposeAgreement(plan, intent, opts);
   const buyer = opts.buyer ?? BUYER;
   for (const d of decisions) {
     const acc = normalize(d);
-    if (!acc || acc.termsHash !== a.termsHash || !a.parties.includes(acc.actor)) continue;
+    if (!acc || !isSealed(d, acc) || acc.termsHash !== a.termsHash || !a.parties.includes(acc.actor)) continue;
     if (a.state !== 'PROPOSED') break;
     try {
       a = accept(a, acc, buyer);
@@ -268,8 +292,12 @@ export function reservations(agreements: Agreement[], except?: Id): Map<Id, numb
   return out;
 }
 
+/** A party's acceptance of the exact terms hash. Only acceptances issued here count towards `commit`. */
 export function acceptMessage(a: Agreement, actor: Id, replyTo: Id, at: Iso, to: Id = BUYER): AcceptMessage {
-  return { type: 'Accept', id: `acc:${a.id}:v${a.version}:${actor}`, from: actor, to, replyTo, termsHash: a.termsHash, at };
+  const id = `acc:${a.id}:v${a.version}:${actor}`;
+  const m: AcceptMessage = { type: 'Accept', id, from: actor, to, replyTo, termsHash: a.termsHash, at };
+  Object.defineProperty(m, SEAL, { value: sealOf(actor, a.termsHash, id), enumerable: true });
+  return m;
 }
 
 export interface SignResult {
@@ -313,6 +341,18 @@ function standingOfferBasis(obligations: Obligation[], world: World): 'synthetic
 }
 
 /**
+ * Basis on which a supplier the amendment releases accepts. One that withdrew (inactive, or nothing left
+ * published) is released by its own withdrawal; a seller at the terminal and an active supplier answer for
+ * themselves.
+ */
+function releaseBasis(actor: Id, world: World): 'synthetic-policy' | 'seller-terminal' | 'pending' {
+  const offers = world.offers.filter((o) => o.actor === actor);
+  if (offers.some((o) => o.provenance.source === 'seller-terminal')) return 'seller-terminal';
+  const active = world.actors.find((x) => x.id === actor)?.active !== false;
+  return active && offers.length > 0 ? 'pending' : 'synthetic-policy';
+}
+
+/**
  * Collects acceptances of the exact terms hash. The buyer signs by asking to commit. A synthetic supplier signs
  * only when its own published offer already covers every one of its obligations; a seller at the terminal and
  * any supplier whose terms differ from its offer are left to answer for themselves.
@@ -333,9 +373,10 @@ export function sign(draft: Agreement, world: World, _truth?: unknown, opts: { a
       continue;
     }
     const mine = a.obligations.filter((o) => o.actor === party);
-    const basis = standingOfferBasis(mine, world);
+    const basis = mine.length ? standingOfferBasis(mine, world) : releaseBasis(party, world);
     const why = outsideOffer(mine, world);
     if (why) declined.push({ actor: party, reason: why });
+    else if (basis === 'pending') declined.push({ actor: party, reason: 'waiting for the supplier to accept the cancellation of its obligation' });
     else if (basis !== 'synthetic-policy') declined.push({ actor: party, reason: 'waiting for the seller to accept' });
     else {
       const m = acceptMessage(a, party, a.id, at, buyer);

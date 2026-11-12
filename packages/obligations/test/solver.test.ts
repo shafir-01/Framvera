@@ -12,7 +12,7 @@ describe.skipIf(!solver)('recover with the MIP solver', () => {
   it('keeps unaffected obligations and rejects the cheaper plan from scratch', async () => {
     const { agreement } = committed();
     const pay = payment(agreement, 'sP1', 'CAPTURE_COMPLETED');
-    const r = await recover(agreement, world(), intent(), { id: 'd1', kind: 'withdraw', actor: 'sP1', detail: 'Söder Print withdraws', at: T('16T06:00') }, { solver, payments: [pay] });
+    const r = await recover(agreement, world(), intent({ budget: { currency: 'SEK', minor: 5_000_000 } }), { id: 'd1', kind: 'withdraw', actor: 'sP1', detail: 'Söder Print withdraws', at: T('16T06:00') }, { solver, payments: [pay] });
     expect(r.feasible).toBe(true);
     expect(r.kept.sort()).toEqual([agreement.obligations[1]!.id, agreement.obligations[2]!.id].sort());
     const repair = r.candidates.find((c) => c.source === 'solver-repair')!;

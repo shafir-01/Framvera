@@ -1,5 +1,5 @@
 import type { Actor, Agreement, Allocation, Intent, Offer, PaymentIntent, Plan, SolveReport, Stage, World } from '@framvera/contracts';
-import { commit, proposeAgreement, type PartyAcceptance } from '../src/agreement.ts';
+import { acceptMessage, commit, proposeAgreement, type AcceptanceInput } from '../src/agreement.ts';
 import { allocationCost, earliestSlot } from '../src/model.ts';
 import type { SolverLike } from '../src/recover.ts';
 import { iso, ms } from '../src/util.ts';
@@ -144,9 +144,9 @@ export function fakeSolver(plans: { cost?: (w: World) => Allocation[] | null; re
   };
 }
 
-export function acceptAll(plan: Plan, i = intent()): PartyAcceptance[] {
+export function acceptAll(plan: Plan, i = intent()): AcceptanceInput[] {
   const draft = proposeAgreement(plan, i);
-  return draft.parties.map((p) => ({ actor: p, message: `m-${p}`, termsHash: draft.termsHash, basis: p === 'buyer' ? 'buyer' : 'synthetic-policy' }));
+  return draft.parties.map((p) => ({ ...acceptMessage(draft, p, `m-${p}`, i.provenance.observedAt), basis: p === 'buyer' ? ('buyer' as const) : ('synthetic-policy' as const) }));
 }
 
 export function committed(): { agreement: Agreement; plan: Plan } {

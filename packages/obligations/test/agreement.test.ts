@@ -27,7 +27,7 @@ describe('agreement state machine', () => {
   it('commits only when every party accepted', () => {
     const plan = basePlan();
     const a = proposeAgreement(plan, intent());
-    const partial = commit(plan, intent(), [{ actor: 'buyer', message: 'b', termsHash: a.termsHash, basis: 'buyer' }]);
+    const partial = commit(plan, intent(), [{ ...acceptMessage(a, 'buyer', 'b', a.createdAt), basis: 'buyer' }]);
     expect(partial.state).toBe('PROPOSED');
     expect(missingAcceptances(partial)).toEqual(['sP1', 'sA1', 'sD1']);
     expect(() => commitAgreement(partial)).toThrow(/Waiting for acceptance/);

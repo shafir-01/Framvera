@@ -22,7 +22,7 @@ import type {
 import { BINDING, BUYER, LIVE_OBLIGATION, accept, amend, commitAgreement, moveObligation, supersede, type AcceptanceInput, type AmendmentSpec } from './agreement.ts';
 import { defaultNotBefore, impactOf, type Impact } from './disrupt.ts';
 import { allocationCost, coalitionMembers, earliestSlot, exclusivePairs, mergeJoint, offerMap, readyAt, required, sameTerms, toAllocation, topoStages, workMs } from './model.ts';
-import { capturedMinor, refundable } from './payment.ts';
+import { capturedMinor, refundable, refundedMinor } from './payment.ts';
 import { HOUR, MINUTE, ObligationError, hours, iso, money, ms } from './util.ts';
 
 export interface SolverLike {
@@ -79,6 +79,8 @@ export interface Evaluated extends Candidate {
   added: Allocation[];
   changed: number;
   total: Money;
+  /** Already captured for obligations this candidate cancels or reduces and not yet refunded. */
+  unrefunded: Money;
   extraCost: Money;
   slipHours: number;
   readyAt: Iso | null;
@@ -159,6 +161,7 @@ interface Ctx {
   originalReady: number;
   names: Map<Id, string>;
   disruption: Disruption;
+  payments: PaymentIntent[];
   verify?: SolverLike['verifyPlan'];
 }
 
@@ -280,7 +283,18 @@ export function evaluate(c: Candidate, ctx: Ctx): Evaluated {
   const total = c.allocations.reduce((s, a) => s + (a.cost.currency === currency ? a.cost.minor : 0), 0);
   const ready = c.allocations.length ? readyAt(ctx.world, c.allocations) : -Infinity;
   if (Number.isFinite(ready) && ready > ms(ctx.intent.deadline) + MINUTE) add('deadline', 'deadline', `Ready ${iso(ready)}, after the deadline ${ctx.intent.deadline}.`);
-  if (total > ctx.intent.budget.minor) add('budget', 'budget', `Costs ${total}, above the budget of ${ctx.intent.budget.minor}.`);
+  const paidOut = unrefundedMinor(ctx.agreement, ctx.payments, cancelled, amended, currency);
+  if (paidOut === null) add('budget', 'paid', `A payment for released obligations is not in ${currency}, so it cannot be counted against the budget.`);
+  const unrefunded = paidOut ?? 0;
+  if (total + unrefunded > ctx.intent.budget.minor) {
+    add(
+      'budget',
+      'budget',
+      unrefunded > 0
+        ? `Costs ${total}, plus ${unrefunded} already paid for released obligations and not yet refunded, above the budget of ${ctx.intent.budget.minor}.`
+        : `Costs ${total}, above the budget of ${ctx.intent.budget.minor}.`,
+    );
+  }
   if (ctx.verify && c.allocations.length) {
     try {
       const fixed = locked(ctx, !!c.escalated).map(toAllocation);
@@ -299,6 +313,7 @@ export function evaluate(c: Candidate, ctx: Ctx): Evaluated {
     added,
     changed: amended.length + cancelled.length + added.length,
     total: money(currency, total),
+    unrefunded: money(currency, unrefunded),
     extraCost: money(currency, total - ctx.originalTotal),
     slipHours: Number.isFinite(ready) && Number.isFinite(ctx.originalReady) ? Math.max(0, hours(ctx.originalReady, ready)) : 0,
     readyAt: Number.isFinite(ready) ? iso(ready) : null,
@@ -488,7 +503,9 @@ export async function recover(agreement: Agreement, world: World, intent: Intent
   const { obligations, groups } = mergeJoint(agreement.obligations, world);
   if (!groups.size) return recoverJobs(agreement, world, intent, d, opts);
   // Members of a joint job are planned as one job, then every member's obligation follows the job's fate.
-  const r = await recoverJobs({ ...agreement, obligations }, world, intent, d, opts);
+  const heads = new Map<Id, Id>();
+  for (const [head, ids] of groups) for (const id of ids) heads.set(id, head);
+  const r = await recoverJobs({ ...agreement, obligations }, world, intent, d, opts, heads);
   const expand = (ids: Id[]) => ids.flatMap((id) => groups.get(id) ?? [id]);
   const others = (id: Id) => (groups.get(id) ?? [id]).slice(1);
   const kept = expand(r.kept);
@@ -500,11 +517,11 @@ export async function recover(agreement: Agreement, world: World, intent: Intent
     replace: r.replacements.map((m) => ({ replaces: m.replaces, obligation: obligationFields(m.allocation) })),
     add: r.added.map(obligationFields),
   };
-  const amendment = r.amendment ? amend(agreement, spec, opts.buyer ?? BUYER, r.world) : undefined;
+  const amendment = r.amendment ? amend(agreement, spec, opts.buyer ?? BUYER, r.world, { released: impact.failed }) : undefined;
   return { ...r, kept, cancelled, impact, amendment, payments: paymentActions(agreement, opts.payments ?? [], cancelled, r.replacements, r.added, r.id, intent, amendment) };
 }
 
-async function recoverJobs(agreement: Agreement, world: World, intent: Intent, d: Disruption, opts: RecoverOptions): Promise<RecoveryResult> {
+async function recoverJobs(agreement: Agreement, world: World, intent: Intent, d: Disruption, opts: RecoverOptions, heads?: Map<Id, Id>): Promise<RecoveryResult> {
   const reserved = toMap(opts.reservedElsewhere);
   const live = agreement.obligations.filter((o) => LIVE_OBLIGATION.includes(o.state));
   const notBefore = opts.notBefore ? ms(opts.notBefore) : defaultNotBefore(agreement, d);
@@ -528,6 +545,7 @@ async function recoverJobs(agreement: Agreement, world: World, intent: Intent, d
     originalReady: readyAt(w2, live.map(toAllocation)),
     names: new Map(world.actors.map((a) => [a.id, a.name])),
     disruption: d,
+    payments: (opts.payments ?? []).map((p) => (heads ? { ...p, obligations: [...new Set(p.obligations.map((id) => heads.get(id) ?? id))] } : p)),
     verify: solver?.verifyPlan?.bind(solver),
   };
   const recId = `rec:${d.id}:${agreement.id}:v${agreement.version}`;
@@ -614,7 +632,7 @@ async function recoverJobs(agreement: Agreement, world: World, intent: Intent, d
     replace: best.amended.map((m) => ({ replaces: m.replaces, obligation: obligationFields(m.allocation) })),
     add: best.added.map(obligationFields),
   };
-  const amendment = BINDING.includes(agreement.state) && best.changed > 0 ? amend(agreement, spec, opts.buyer ?? BUYER, w2) : undefined;
+  const amendment = BINDING.includes(agreement.state) && best.changed > 0 ? amend(agreement, spec, opts.buyer ?? BUYER, w2, { released: [...ctx.failed] }) : undefined;
   return {
     id: recId,
     disruption: d.id,
@@ -692,7 +710,7 @@ function concessionsFrom(evaluated: Evaluated[], ctx: Ctx, recId: string): Conce
   if (!soft.length) return [];
   const needs = (e: Evaluated) => {
     const late = e.reasons.some((r) => r.code === 'deadline') && e.readyAt ? Math.ceil((ms(e.readyAt) - ms(ctx.intent.deadline)) / HOUR) : 0;
-    const over = e.reasons.some((r) => r.code === 'budget') ? e.total.minor - ctx.intent.budget.minor : 0;
+    const over = e.reasons.some((r) => r.code === 'budget') ? e.total.minor + e.unrefunded.minor - ctx.intent.budget.minor : 0;
     return { late, over, count: (late > 0 ? 1 : 0) + (over > 0 ? 1 : 0) };
   };
   soft.sort((a, b) => {
@@ -717,9 +735,12 @@ function concessionsFrom(evaluated: Evaluated[], ctx: Ctx, recId: string): Conce
       id: `${recId}:budget`,
       target: { kind: 'intent', field: 'budget' },
       from: ctx.intent.budget.minor,
-      to: pick.total.minor,
+      to: pick.total.minor + pick.unrefunded.minor,
       estimate: money(ctx.intent.budget.currency, n.over),
-      rationale: `Raising the budget by ${n.over} minor units covers "${pick.description}" while every accepted obligation stays as agreed.`,
+      rationale:
+        pick.unrefunded.minor > 0
+          ? `Raising the budget by ${n.over} minor units covers "${pick.description}" until the refund for released obligations is confirmed, while every accepted obligation stays as agreed.`
+          : `Raising the budget by ${n.over} minor units covers "${pick.description}" while every accepted obligation stays as agreed.`,
     });
   return out;
 }
@@ -727,6 +748,37 @@ function concessionsFrom(evaluated: Evaluated[], ctx: Ctx, recId: string): Conce
 const CAPTURED_LIKE = ['CAPTURE_COMPLETED', 'REFUND_COMPLETED', 'REFUND_DENIED'];
 const VOIDABLE = ['PAYMENT_PROPOSED', 'ORDER_CREATED', 'PAYER_ACTION_REQUIRED', 'APPROVED'];
 const UNSETTLED = ['CAPTURE_PENDING', 'CAPTURE_UNKNOWN', 'REFUND_PENDING', 'REFUND_UNKNOWN'];
+const MAYBE_CAPTURED = ['CAPTURE_PENDING', 'CAPTURE_UNKNOWN'];
+
+/** Amount by which a candidate cancels or reduces one obligation. */
+function reductionOf(o: Obligation, cancelled: Id[], amended: { replaces: Id; allocation: Allocation }[]): number {
+  if (cancelled.includes(o.id)) return o.amount.minor;
+  const m = amended.find((x) => x.replaces === o.id);
+  return m ? Math.max(0, o.amount.minor - m.allocation.cost.minor) : 0;
+}
+
+/**
+ * Money already paid for obligations a candidate cancels or reduces that has not come back: captured minus
+ * confirmed refunds, and the full amount while a capture's outcome is still unknown. It stays spent until
+ * the refund is confirmed, so it counts against the budget next to the new plan.
+ */
+function unrefundedMinor(agreement: Agreement, payments: PaymentIntent[], cancelled: Id[], amended: { replaces: Id; allocation: Allocation }[], currency: string): number | null {
+  const byId = new Map(agreement.obligations.map((o) => [o.id, o]));
+  let out = 0;
+  for (const p of payments) {
+    if (p.agreement !== agreement.id || p.amount.minor <= 0) continue;
+    const drop = p.obligations.reduce((s, id) => {
+      const o = byId.get(id);
+      return s + (o ? reductionOf(o, cancelled, amended) : 0);
+    }, 0);
+    if (drop <= 0) continue;
+    const paid = MAYBE_CAPTURED.includes(p.state) ? p.charged.minor : capturedMinor(p) - refundedMinor(p);
+    if (paid <= 0) continue;
+    if (p.charged.currency !== currency) return null;
+    out += Math.min(paid, Math.round((p.charged.minor * drop) / p.amount.minor));
+  }
+  return out;
+}
 
 /** Payment consequences of a recovery, as proposals only. Nothing here talks to a payment provider. */
 function paymentActions(
